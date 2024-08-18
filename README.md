@@ -62,7 +62,6 @@ When using other parameters that limit the number of iterations, the final numbe
 *Default value* 1000
 
 #### DEPTH [depth](https://catboost.ai/en/docs/references/training-parameters/common#depth)
-
 Depth of the trees.
 
 The range of supported values depends on the processing unit type and the type of the selected loss function:
@@ -85,7 +84,7 @@ Any positive value is allowed.
 
 *Default value* 3.0
 
-#### REGULARIZATION  [model_size_re] (https://catboost.ai/en/docs/references/model-size-reg)
+#### REGULARIZATION  [model_size_re](https://catboost.ai/en/docs/references/model-size-reg)
 This parameter influences the model size if training data has categorical features.
 
 The information regarding categorical features makes a great contribution to the final size of the model. The mapping from the categorical feature value hash to some statistic values is stored for each categorical feature that is used in the model. The size of this mapping for a particular feature depends on the number of unique values that this feature takes.
@@ -94,12 +93,36 @@ The information regarding categorical features makes a great contribution to the
 ???
 
 #### LOSS FUNCTION  
-
 The metric to use in training. The specified value also determines the machine learning problem to solve. Some metrics support optional parameters.
 
 *LogLoss*
 
 *CrossEntropy*
+
+### TREE COUNT tree_count
+Max number of trees in the model.
+
+### USE BEST MODEL
+Choose best model from all iterations.
+
+*Default value* False
+
+
+### CATEGORIAL FEATUTES 'fieldName_1, fieldName_2, ...'
+The list of field name of categorical feature. Default: all TEXT,  CHAR or VARCHAR fields
+
+
+
+### RANDOM SEED random_seed
+The random seed used for training.
+*Type* int
+
+### LEARNING RATE learning_rate]
+The learning rate used for training.
+
+*Type* float
+
+
 
 
 ## EXAMPLE:
