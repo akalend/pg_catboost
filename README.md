@@ -116,16 +116,18 @@ The information regarding categorical features makes a great contribution to the
 
 
 
- CREATE CLASSIFICATION MODEL adult (
- 	LOSS FUNCTION Logloss,
- 	ITERATIONS 100,
- 	RANDOM SEED 42,
-    learning rate 0.4234185321620083,
-    DEPTH 5,
-    L2 REGULARIZATION 9.464266235679002,
-    TARGET income,
-    CATEGORIAL FEATUTES 'workclass,education,marital_status', 'occupation,relationship,race,sex,native_country'
- 	)
-    AS SELECT * FROM adult;
+ CREATE CLASSIFICATION MODEL adult
+ (
+	LOSS FUNCTION Logloss,
+	ITERATIONS 100,
+	RANDOM SEED 42,
+	learning rate 0.4234185321620083,
+	DEPTH 5,
+	L2 REGULARIZATION 9.464266235679002,
+	TARGET income,
+	CATEGORIAL FEATUTES 'workclass,education,marital_status', 'occupation,relationship,race,sex,native_country'
+	)
+	AS
+	SELECT * FROM adult;
 ```
 
