@@ -121,7 +121,7 @@ The information regarding categorical features makes a great contribution to the
 	LOSS FUNCTION Logloss,
 	ITERATIONS 100,
 	RANDOM SEED 42,
-	learning rate 0.4234185321620083,
+	LEARNING RATE 0.4234185321620083,
 	DEPTH 5,
 	L2 REGULARIZATION 9.464266235679002,
 	TARGET income,
