@@ -1,0 +1,6 @@
+# CatBoost extension
+comment = 'machine learning module using CatBoost'
+default_version = '0.1'
+module_pathname = '$libdir/catboost'
+relocatable = true
+trusted = true
