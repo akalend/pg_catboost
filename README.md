@@ -94,6 +94,28 @@ The information regarding categorical features makes a great contribution to the
 
 ## EXAMPLE:
 ```sql
+\d adult
+                        Table "public.adult"
+     Column     |       Type       | Collation | Nullable | Default 
+----------------+------------------+-----------+----------+---------
+ age            | double precision |           |          | 
+ workclass      | text             |           |          | 
+ fnlwgt         | double precision |           |          | 
+ education      | text             |           |          | 
+ education_num  | double precision |           |          | 
+ marital_status | text             |           |          | 
+ occupation     | text             |           |          | 
+ relationship   | text             |           |          | 
+ race           | text             |           |          | 
+ sex            | text             |           |          | 
+ capital_gain   | double precision |           |          | 
+ capital_loss   | double precision |           |          | 
+ hours_per_week | double precision |           |          | 
+ native_country | text             |           |          | 
+ income         | text             |           |          | 
+
+
+
  CREATE CLASSIFICATION MODEL adult (
  	LOSS FUNCTION Logloss,
  	ITERATIONS 100,
