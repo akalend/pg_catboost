@@ -1,3 +1,4 @@
+
 # sudo  PATH=$PATH:/usr/local/pgsql/bin    make install
 
 MODULE_big = catboost
@@ -11,16 +12,15 @@ PGFILEDESC = "machine learning module using catboost"
 
 PATH += $(shell pg_config  --bindir)
 
-PYTHON_LIB = $(shell python3-config  --ldflags)
+# PYTHON_LIB = $(shell python3-config  --ldflags)
 
-PG_LIBDIR = $(shell pg_config  --libdir)
+# PG_LIBDIR = $(shell pg_config  --libdir)
 
 
+# PG_CPPFLAGS = -I$(libpq_srcdir) -ggdb -I/usr/include/python3.10 $(python3-config --includes )
+# PG_LDFLAGS +=   -L$(PG_LIBDIR) $(PYTHON_LIB)  $(python3-config --libs)
 
-PG_CPPFLAGS = -I$(libpq_srcdir) -ggdb -I/usr/include/python3.10 $(python3-config --includes )
-PG_LDFLAGS +=   -L$(PG_LIBDIR) $(PYTHON_LIB)  $(python3-config --libs)
-
-SHLIB_LINK +=  -lpython3.10 -lpq
+# SHLIB_LINK +=  -lpython3.10 -lpq
 
 # SHLIB_LINK_INTERNAL += 
 

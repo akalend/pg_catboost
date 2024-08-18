@@ -12,6 +12,7 @@ the Machine Learning module based on the [CatBoost] (https://catboost.io)
 CREATE  [ CLASSIFICATION | REGRESSION | RANKING ]  MODEL model_name
   (  
      [TARGET fieldName ]
+     [SPLIT split]
      [ITERATIONS itarations],
      [DEPTH   dept],
      [L2 REGULARIZATION l2_leaf_reg],
@@ -54,8 +55,15 @@ short description
 
 
 #### TARGET fieldName
-the fieldname of target column data,
+The fieldname of target column data,
 If the target variable is not specified, the first field is used
+
+#### SPLIT split
+Part of the dataset for test analysis
+
+*Type* float
+*Default value* 0.2
+
 
 #### ITERATIONS [iterations](https://catboost.ai/en/docs/references/training-parameters/common#iterations)
 The maximum number of trees that can be built when solving machine learning problems.

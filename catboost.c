@@ -10,7 +10,6 @@
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
 
-#include <Python.h>
 #include <stdbool.h>
 
 #define TOKEN_LEN 32
@@ -23,11 +22,9 @@
 
 #define CHECK_TOKEN(tok, len) \
 if (is_three == false && pg_strncasecmp(key, tok, len) == 0) \
-{   *(p3++) = '_'; \
-    is_three = true;\
+{   *(p3++) = '_';                                           \
+    is_three = true;                                         \
     continue;}
-
-
 
 enum model_type_t {
     MODEL_NONE,
@@ -43,9 +40,6 @@ PG_MODULE_MAGIC;
 /* Function declarations */
 
 
-void setParamsCatBoostObject(PyObject* pCatboost);
-void* getCatBoostClass();
-
 char* strip(char **buf, int len);
 char* unstrip(char **buf);
 char* comma(char **buf);
@@ -55,9 +49,6 @@ char* parse_name(char** buf, char **out);
 PG_FUNCTION_INFO_V1(test_python);
 PG_FUNCTION_INFO_V1(test_table);
 PG_FUNCTION_INFO_V1(ml_parse);
-
-
-PyObject* pDict = NULL;
 
 
 char*
@@ -138,7 +129,7 @@ parse_name(char** buf, char **out)
 
     if (flag == false && model_type == MODEL_NONE)
     {
-        elog(WARNING, "DO NOT PARSE");
+        elog(ERROR, "model type undefined");
         return NULL;
     }
     
@@ -178,11 +169,16 @@ ml_parse(PG_FUNCTION_ARGS)
     modelName = parse_name(&query, &p2);
 
     if (modelName == NULL)
-        PG_RETURN_UINT64(0);
+    {        
+        elog(ERROR, "the name model is absent");
+        PG_RETURN_INT64(-1);
+    }
     p3 = strip(&p2, TOKEN_LEN);
 
-    if (*p3 != '(')
-        PG_RETURN_UINT64(0);
+    if (*p3 != '('){
+        elog(ERROR, "parse error: '%s'", p2 );        
+        PG_RETURN_INT64(-1);
+    }
 
     p = p3;
     p2 = NULL;
