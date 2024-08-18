@@ -4,6 +4,10 @@
 the Machine Learning module based on the [CatBoost] (https://catboost.io) 
 
 
+
+## CREATE MODEL
+
+
 ```sql
 CREATE  [ CLASSIFICATION | REGRESSION | RANKING ]  MODEL model_name
   (  
@@ -163,4 +167,29 @@ The learning rate used for training.
 	AS
 	SELECT * FROM adult;
 ```
+
+
+
+
+## SHOW MODEL
+
+
+```sql
+
+SHOW MODEL model_name;
+
+```
+
+Show model information;
+
+
+## PRODICT MODEL
+
+
+```sql
+
+PREDICT model_name AS query
+
+```
+
 
