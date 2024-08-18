@@ -76,7 +76,19 @@ The range of supported values depends on the processing unit type and the type o
 *Default value* 6 
 
 
+### L2 REGULARIZATION [l2_leaf_reg](https://catboost.ai/en/docs/references/training-parameters/common#l2_leaf_reg)
+Coefficient at the L2 regularization term of the cost function.
 
+Any positive value is allowed.
+
+*Type* float
+
+*Default value* 3.0
+
+### REGULARIZATION  [model_size_re] (https://catboost.ai/en/docs/references/model-size-reg)
+This parameter influences the model size if training data has categorical features.
+
+The information regarding categorical features makes a great contribution to the final size of the model. The mapping from the categorical feature value hash to some statistic values is stored for each categorical feature that is used in the model. The size of this mapping for a particular feature depends on the number of unique values that this feature takes.
 
 
 
