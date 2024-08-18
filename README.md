@@ -49,11 +49,11 @@ short description
 short description 
 
 
-### TARGET fieldName
+#### TARGET fieldName
 the fieldname of target column data,
 If the target variable is not specified, the first field is used
 
-### ITERATIONS [iterations](https://catboost.ai/en/docs/references/training-parameters/common#iterations)
+#### ITERATIONS [iterations](https://catboost.ai/en/docs/references/training-parameters/common#iterations)
 The maximum number of trees that can be built when solving machine learning problems.
 
 When using other parameters that limit the number of iterations, the final number of trees may be less than the number specified in this parameter.
@@ -61,7 +61,7 @@ When using other parameters that limit the number of iterations, the final numbe
 *Type* int
 *Default value* 1000
 
-### DEPTH [depth](https://catboost.ai/en/docs/references/training-parameters/common#depth)
+#### DEPTH [depth](https://catboost.ai/en/docs/references/training-parameters/common#depth)
 
 Depth of the trees.
 
@@ -76,7 +76,7 @@ The range of supported values depends on the processing unit type and the type o
 *Default value* 6 
 
 
-### L2 REGULARIZATION [l2_leaf_reg](https://catboost.ai/en/docs/references/training-parameters/common#l2_leaf_reg)
+#### L2 REGULARIZATION [l2_leaf_reg](https://catboost.ai/en/docs/references/training-parameters/common#l2_leaf_reg)
 Coefficient at the L2 regularization term of the cost function.
 
 Any positive value is allowed.
@@ -85,11 +85,21 @@ Any positive value is allowed.
 
 *Default value* 3.0
 
-### REGULARIZATION  [model_size_re] (https://catboost.ai/en/docs/references/model-size-reg)
+#### REGULARIZATION  [model_size_re] (https://catboost.ai/en/docs/references/model-size-reg)
 This parameter influences the model size if training data has categorical features.
 
 The information regarding categorical features makes a great contribution to the final size of the model. The mapping from the categorical feature value hash to some statistic values is stored for each categorical feature that is used in the model. The size of this mapping for a particular feature depends on the number of unique values that this feature takes.
 
+#### RMSN 
+???
+
+#### LOSS FUNCTION  
+
+The metric to use in training. The specified value also determines the machine learning problem to solve. Some metrics support optional parameters.
+
+*LogLoss*
+
+*CrossEntropy*
 
 
 ## EXAMPLE:
