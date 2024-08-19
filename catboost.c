@@ -207,6 +207,7 @@ ml_parse(PG_FUNCTION_ARGS)
             CHECK_TOKEN("TREE", 4);
             CHECK_TOKEN("USE", 3);
             CHECK_TOKEN("RANDOM", 6);
+            CHECK_TOKEN("EVAL", 4);
 
             *p3 = '\0';
             key_start = false;

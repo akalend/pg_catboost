@@ -23,7 +23,8 @@ CREATE  [ CLASSIFICATION | REGRESSION | RANKING ]  MODEL model_name
      [USE BEST MODEL],
      [CATEGORIAL FEATUTES 'fieldName_1, fieldName_2, ...'],
      [RANDOM SEED random_seed],
-     [LEARNING RATE learning_rate]
+     [LEARNING RATE learning_rate],
+     [EVAL METRIC metrics ]]
 
   ) AS query;
 
@@ -59,7 +60,7 @@ The fieldname of target column data,
 If the target variable is not specified, the first field is used
 
 #### SPLIT split
-Part of the dataset for test analysis
+Part of the dataset for test analysis. The max value of split is 0.5
 
 *Type* float
 *Default value* 0.2
@@ -133,6 +134,9 @@ The random seed used for training.
 The learning rate used for training.
 
 *Type* float
+
+### EVAL METRIC metrics
+the list of metrics. [Support metrics](https://catboost.ai/en/docs/references/custom-metric__supported-metrics)
 
 
 
