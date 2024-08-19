@@ -13,9 +13,6 @@ $$
     plpy.warning('name',name);
     opt_dict = json.loads(options) 
 
-
-    ## query = query + " ORDER BY random()"
-
     plpy.warning(query);
     rows = plpy.execute(query)
 
@@ -34,17 +31,21 @@ $$
   
     cat_features_idx = []
     i = 0
-    for type in rows.coltypes():
-        if type in (19,25,1042,1043):
+    bool_types = []
+    for col_type in rows.coltypes():
+        if col_type in (19,25,1042,1043):
             cat_features_idx.append(i)
+        if col_type == 16:
+            bool_types.append(i)
         i += 1
 
     cat_features = []
     for idx in cat_features_idx:
         cat_features.append(columns[idx])
 
-    cat_features.remove(target_name)
-    ## split
+    if target_name in cat_features:
+        cat_features.remove(target_name)
+
     if 'SPLIT' in opt_dict:
         split = opt_dict['SPLIT']
         del(opt_dict['SPLIT'])
@@ -54,11 +55,9 @@ $$
     if (split > 0.5 or split == 0):
         plpy.error("split value must be in 0-0.5 interval")
 
-    plpy.warning("split ", split)
-
     is_class_name = False
-    if ('classes' in opt_dict):
-        class_names = opt_dict['classes']
+    if ('CLASSES' in opt_dict):
+        class_names = opt_dict['CLASSES']
     else:
         is_class_name = True
 
@@ -71,7 +70,6 @@ $$
 
     X_test = []
     y_test = []
-        
     
     class_names = []
     train_rows = nrows * split
@@ -84,20 +82,22 @@ $$
         if row[target_name] is None:
             continue
 
+        ###### get classes ######
         if is_class_name:
-            if len(class_names) == 0:
-                class_names.append(row[target_name])
-            if len(class_names) == 1:
-                if class_names[0] != row[target_name]:
+            if type(row[target_name] ) == type(True):
+                class_names = [0,1]
+                is_class_name = False
+            elif not row[target_name] in class_names:
                     class_names.append(row[target_name])
-                    is_class_name = False
 
         for col in row:
             if row[col] is None:
                 row[col] = 'Nan'
+            val = row[col]
+            if type(row[col] ) == type(True):
+                row[col] = int(row[col])
 
         append_values = row.values()
-
         # target = row[target_name]
         
         
@@ -107,12 +107,14 @@ $$
             y_test.append(target)
             X_test.append(append_values)
             # plpy.warning('train', append_values);
+            # plpy.warning('y_train', target);
         else:        
             y.append(target)
             X.append(append_values)
             # plpy.warning('test', append_values);
 
 
+    plpy.notice('class_names', class_names)
     # plpy.warning('class_names',class_names);
     plpy.warning('options', opt_dict);
     
@@ -135,6 +137,7 @@ $$
         iterations=iterations,
         random_seed=random_seed,
         learning_rate=learning_rate,
+        class_names=class_names,
         depth=depth,
         l2_leaf_reg=l2_leaf_reg )
 
@@ -147,6 +150,7 @@ $$
     return score;
 
 $$ LANGUAGE plpython3u;
+
 
 
 CREATE OR REPLACE FUNCTION ml_parse(text)
