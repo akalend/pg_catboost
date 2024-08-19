@@ -1,7 +1,7 @@
 # pg_catboost
 *in development*
 
-the Machine Learning module based on the [CatBoost] (https://catboost.io) 
+the Machine Learning module based on the [CatBoost](https://catboost.io) 
 
 
 
@@ -39,8 +39,8 @@ raining and applying models for the classification problems. Provides compatibil
 
 The default optimized objective depends on various conditions:
 
-    Logloss — The target has only two different values or the target_border parameter is not None.
-    MultiClass — The target has more than two different values and the border_count parameter is None.
+- Logloss — The target has only two different values or the target_border parameter is not None.
+- MultiClass — The target has more than two different values and the border_count parameter is None.
 
 
 
@@ -57,12 +57,14 @@ short description
 
 #### TARGET fieldName
 The fieldname of target column data,
+
 If the target variable is not specified, the first field is used
 
 #### SPLIT split
 Part of the dataset for test analysis. The max value of split is 0.5
 
 *Type* float
+
 *Default value* 0.2
 
 
@@ -72,6 +74,7 @@ The maximum number of trees that can be built when solving machine learning prob
 When using other parameters that limit the number of iterations, the final number of trees may be less than the number specified in this parameter.
 
 *Type* int
+
 *Default value* 1000
 
 #### DEPTH [depth](https://catboost.ai/en/docs/references/training-parameters/common#depth)
@@ -79,9 +82,9 @@ Depth of the trees.
 
 The range of supported values depends on the processing unit type and the type of the selected loss function:
 
-    CPU — Any integer up to  16.
+- CPU — Any integer up to  16.
 
-    GPU — Any integer up to 8 for pairwise modes (YetiRank, PairLogitPairwise, and QueryCrossEntropy), and up to 16 for all other loss functions.
+- GPU — Any integer up to 8 for pairwise modes (YetiRank, PairLogitPairwise, and QueryCrossEntropy), and up to 16 for all other loss functions.
 
 *Type* int
 
@@ -128,6 +131,7 @@ The list of field name of categorical feature. Default: all TEXT,  CHAR or VARCH
 
 ### RANDOM SEED random_seed
 The random seed used for training.
+
 *Type* int
 
 ### LEARNING RATE learning_rate]
