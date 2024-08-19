@@ -108,9 +108,9 @@ The information regarding categorical features makes a great contribution to the
 #### LOSS FUNCTION  
 The metric to use in training. The specified value also determines the machine learning problem to solve. Some metrics support optional parameters.
 
-*LogLoss*
-
-*CrossEntropy*
+*Default* 
+- *LogLoss* for binary
+- *CrossEntropy* for multi classification
 
 ### TREE COUNT tree_count
 Max number of trees in the model.
