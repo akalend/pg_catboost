@@ -26,7 +26,7 @@ CREATE  [ CLASSIFICATION | REGRESSION | RANKING ]  MODEL model_name
      [LEARNING RATE learning_rate],
      [EVAL METRIC metrics ]]
 
-  ) AS query;
+  ) FROM table;
 
 ```
 
@@ -168,27 +168,25 @@ the list of metrics. [Support metrics](https://catboost.ai/en/docs/references/cu
  income         | text             |           |          | 
 
 
+catboost=#
+ CREATE CLASSIFICATION  
+      MODEL titanic (
+         TREE count 200, 
+         DEPTH 5,
+         TARGET res,
+         ITERATION 200)
+      FROM titanic;
+INFO:  Acc=0.9221556886227545
+CREATE MODEL
+catboost=# 
 
- CREATE CLASSIFICATION MODEL adult
- (
-	LOSS FUNCTION Logloss,
-	ITERATIONS 100,
-	RANDOM SEED 42,
-	LEARNING RATE 0.4234185321620083,
-	DEPTH 5,
-	L2 REGULARIZATION 9.464266235679002,
-	TARGET income,
-	CATEGORIAL FEATUTES 'workclass,education,marital_status', 'occupation,relationship,race,sex,native_country'
-	)
-	AS
-	SELECT * FROM adult;
 ```
 
 
 
 
 ## SHOW MODEL
-
+*do not implementation*
 
 ```sql
 
@@ -200,6 +198,7 @@ Show model information;
 
 
 ## PRODICT MODEL
+*do not implementation*
 
 
 ```sql
