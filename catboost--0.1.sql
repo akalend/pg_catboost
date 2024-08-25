@@ -1,3 +1,13 @@
+CREATE TABLE IF NOT EXISTS ml_model (
+    name        Name,
+    model_file  text,
+    model_type  char(1),
+    acc         real,
+    info        text,
+    args        text
+    );
+
+
 CREATE OR REPLACE FUNCTION ml_learn_classifier(
                                 name text,          -- name of model
                                 options jsonb,      -- options
