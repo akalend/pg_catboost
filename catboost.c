@@ -6,25 +6,19 @@
 #include "c.h"
 
 #include "access/slru.h"
+#include "executor/executor.h"
 #include "executor/spi.h"
+#include "nodes/parsenodes.h"
+#include "nodes/primnodes.h"
+#include "nodes/pg_list.h"
+#include "parser/analyze.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
 
+
+#include "optimizer/planner.h"
 #include <stdbool.h>
-
-#define TOKEN_LEN 32
-
-#define PARSE_TOKEN   p2++;    \
-    p3 = strip(&p2, TOKEN_LEN);\
-    p2 = unstrip(&p3);         \
-    *p2 = '\0';
-
-
-#define CHECK_TOKEN(tok, len) \
-if (is_three == false && pg_strncasecmp(key, tok, len) == 0) \
-{   *(p3++) = '_';                                           \
-    is_three = true;                                         \
-    continue;}
 
 enum model_type_t {
     MODEL_NONE,
@@ -36,254 +30,183 @@ enum model_type_t {
 PG_MODULE_MAGIC;
 
 
+static planner_hook_type prev_planner_hook = NULL;
 
 /* Function declarations */
 
+// extern Datum ml_learn_classifier(PG_FUNCTION_ARGS);
+PlannedStmt *my_planner(Query *parse, const char *query_string, 
+                       int cursorOptions, ParamListInfo boundParams);
+void ml_parse(const char *query_string, char **modelName);
+void ModelProcessUtility(PlannedStmt *pstmt, const char *queryString,
+                        bool readOnlyTree, ProcessUtilityContext context,
+                        ParamListInfo params, QueryEnvironment *queryEnv,
+                        DestReceiver *dest, QueryCompletion *qc);
+void ModelExecutorStart(QueryDesc *queryDesc, int eflags);
+void ModelExecutorRun(QueryDesc *queryDesc,
+                     ScanDirection direction, uint64 count, bool execute_once);
+void ModelExecutorEnd(QueryDesc *queryDesc);
+void model_post_parse_analyze(ParseState *pstate,
+                             Query *query,
+                             JumbleState *jstate);
 
-char* strip(char **buf, int len);
-char* unstrip(char **buf);
-char* comma(char **buf);
-char* parse_name(char** buf, char **out);
+void _PG_init(void);
 
 
-PG_FUNCTION_INFO_V1(test_python);
-PG_FUNCTION_INFO_V1(test_table);
-PG_FUNCTION_INFO_V1(ml_parse);
 
 
-char*
-strip(char **buf, int len)
+PlannedStmt *
+my_planner(Query *parse, const char *query_string, int cursorOptions,
+                 ParamListInfo boundParams)
 {
-    char* p  = *buf;
-    while( *p == ' ' && --len)
-        p++;
-    return p;
+    // elog(WARNING, "%s", __FUNCTION__);
+
+    return standard_planner(parse, query_string, cursorOptions, boundParams);
 }
 
-char*
-unstrip(char **buf)
+
+
+
+
+void
+ModelProcessUtility(PlannedStmt *pstmt,
+                        const char *queryString,
+                        bool readOnlyTree,
+                        ProcessUtilityContext context,
+                        ParamListInfo params,
+                        QueryEnvironment *queryEnv,
+                        DestReceiver *dest,
+                        QueryCompletion *qc)
 {
-    char* p  = *buf;
-    while( *p != ' ')
-        p++;
-    return p;
-}
 
-char*
-comma(char **buf)
-{
-    char* p  = *buf;
-    while( *p != ',')
-        p++;
-    return p;
-}
+    Node *parsetree = pstmt->utilityStmt;
+    NodeTag nodeTag = nodeTag(parsetree);
 
- // "   CREATE MODEL adult (xxx 10, yyy aaa, cut_features 'age, education, occupation', metrics logloss) "
-                            // "AS SELECT * FROM adult10; ";
-char *
-parse_name(char** buf, char **out)
-{
-    char  *p, *p2, *p3;
-    enum model_type_t model_type;
-    bool flag;
-    char *modelName;
-    model_type = MODEL_NONE;
+    // // elog(WARNING, "ModelProcessUtility");
 
-    p = *buf;
 
-    /* CREATE */    
-    p3 = strip(&p, TOKEN_LEN);
-    p2 = unstrip(&p3);
-    *p2 = '\0';  
-    
-    if (pg_strcasecmp("create", p3) != 0)
+    if (nodeTag == T_CreateModelStmt) 
     {
-        elog(WARNING, "DO NOT PARSE");
-        return NULL;
-    }
+        CreateModelStmt *stm = (CreateModelStmt *)parsetree;
+        ListCell *lc;
+        StringInfoData buf;
+        int ret;
+        // uint64 proc;
 
-    // next token
-    PARSE_TOKEN;
+        initStringInfo(&buf);
+        appendStringInfo(&buf, "SELECT ml_learn_classifier('%s', '{", stm->modelname);
 
-    flag = false;
-    if (pg_strcasecmp("model", p3) == 0  )
-    {
-      flag = true;
-      model_type = MODEL_CLASSIFICATION;
-    }
+        // // elog(WARNING, "Model name %s  %s", stm->modelname, stm->modelclass ? "regression" : "classification");
+        
 
-    if (pg_strcasecmp("classification", p3) == 0 )
-    {
-        model_type = MODEL_CLASSIFICATION;
-    }
-
-    if (pg_strcasecmp("regression", p3) == 0 )
-    {
-        model_type = MODEL_REGRESSION;
-    }
-
-    if (pg_strcasecmp("ranking", p3) == 0 )
-    {
-        model_type = MODEL_RANKING;
-    }
-
-    if (flag == false && model_type == MODEL_NONE)
-    {
-        elog(ERROR, "model type undefined");
-        return NULL;
-    }
-    
-    elog(WARNING, "PARSE Ok type=%d flag=%d", model_type, flag);
-
-    // check token MODEL
-    PARSE_TOKEN;
-    if (pg_strcasecmp("model", p3) == 0 )
-    {
-        PARSE_TOKEN;
-    }
-
-    modelName = p3;
-    *out = p2 + 1;
-
-    return modelName;
-}
- 
-
-Datum
-ml_parse(PG_FUNCTION_ARGS)
-{
-    char *modelName, *p2, *p3, *p;
-    bool is_begin = true;
-    bool is_three = false;
-    bool is_apostrophe = false;
-    bool key_start = false;
-    char *query = text_to_cstring(PG_GETARG_TEXT_PP(0));
-    char key[TOKEN_LEN];
-    char value[TOKEN_LEN];
-    char c;
-
-    StringInfoData buf;
-    initStringInfo(&buf);
-    appendStringInfoChar(&buf, '{');
-
-    modelName = parse_name(&query, &p2);
-
-    if (modelName == NULL)
-    {        
-        elog(ERROR, "the name model is absent");
-        PG_RETURN_INT64(-1);
-    }
-    p3 = strip(&p2, TOKEN_LEN);
-
-    if (*p3 != '('){
-        elog(ERROR, "parse error: '%s'", p2 );        
-        PG_RETURN_INT64(-1);
-    }
-
-    p = p3;
-    p2 = NULL;
-    is_begin = true;
-
-    while( *p++ != ')')
-    {
-        if (*p == ' ' && !key_start)
-            continue;
-
-        if (is_begin)
-        {
-            p2 = p;
-            p3 = key;
-            is_begin = false;
-            is_three = false;
-            key_start = true;
-        }
-
-        if (*p == ' ') 
-        {
-
-            CHECK_TOKEN("LEARNING", 8);
-            CHECK_TOKEN("L2", 2);
-            CHECK_TOKEN("LOSS", 4);
-            CHECK_TOKEN("TREE", 4);
-            CHECK_TOKEN("USE", 3);
-            CHECK_TOKEN("RANDOM", 6);
-            CHECK_TOKEN("EVAL", 4);
-
-            *p3 = '\0';
-            key_start = false;
-            p3 = value;
-            continue;
-        }
-
-
-        if (*p == ',' && !is_apostrophe)
-        {
-            is_begin = true;
-            *p = '\0';
-
-            appendStringInfo(&buf, "\"%s\":",key);
-            
-            if (isdigit(value[0]))
-                appendStringInfo(&buf, "%s",value);
+        foreach(lc, stm->options)
+        {        
+            ModelOptElement *opt;
+            opt = (ModelOptElement *) lfirst(lc);
+            if (opt->value != NULL)
+                // // elog(WARNING,"key:%s value:%s\n",opt->key,opt->value );
+                appendStringInfo(&buf, "\"%s\":\"%s\"",opt->key,opt->value);
             else
-                appendStringInfo(&buf, "\"%s\"",value);
-            appendStringInfoChar(&buf, ',');
+                appendStringInfo(&buf, "\"%s\":%s",opt->key,opt->value);
+
+            appendStringInfo(&buf, ", ");
+        }
+        
+        buf.data[buf.len-2] = '}';
+        appendStringInfo(&buf, "', '%s')", stm->tablename);
+
+        SPI_connect();
+        ret = SPI_exec(buf.data, 1);
+        // proc = SPI_processed;
+
+        // elog(WARNING, "get %ld records ret = %d" , proc, ret);
+        if (ret > 0 && SPI_tuptable != NULL)
+        {
+            TupleDesc tupdesc = SPI_tuptable->tupdesc;
+            // elog(WARNING, "attr count=%d", tupdesc->natts);
+            SPITupleTable *tuptable = SPI_tuptable;
+            HeapTuple tuple = tuptable->vals[0];
+            char * res = SPI_getvalue(tuple, tupdesc, 1);
+            elog(INFO, "Acc=%s", res);
         }
 
-        if(*p == '\'')
-        {   
-            if (is_apostrophe)
-            {
-                is_apostrophe = false;            
-                *p3++ = '}';
-                *p3 = '\0';
-                continue;
-            }
-            else 
-            {                
-                is_apostrophe = true;
-                value[0] = '{';
-                p3 = value + 1;
-                continue;
-            }
-        }
+        SPI_finish();
+        pfree(buf.data);
 
-        c = toupper(*p);
-        *p3++ = c;
+
+        CommandCounterIncrement();
+    }
+    else
+        standard_ProcessUtility(pstmt, queryString, readOnlyTree,
+                                context, params, queryEnv,
+                                dest, qc);
+}
+
+
+void
+ModelExecutorRun(QueryDesc *queryDesc,
+                     ScanDirection direction, uint64 count, bool execute_once)
+{
+    // elog(WARNING, "%s", __FUNCTION__);
+    standard_ExecutorRun(queryDesc, direction, count, execute_once);
+}
+
+void
+ModelExecutorStart(QueryDesc *queryDesc, int eflags)
+{
+    // elog(WARNING, "%s", __FUNCTION__);
+    standard_ExecutorStart(queryDesc, eflags);
+}
+
+void
+ModelExecutorEnd(QueryDesc *queryDesc)
+{
+    // elog(WARNING, "%s", __FUNCTION__);
+    standard_ExecutorEnd(queryDesc);
+}
+
+void
+model_post_parse_analyze(ParseState *pstate,
+                        Query *query,
+                        JumbleState *jstate)
+{
+    // elog(WARNING, "%s", __FUNCTION__);    
+};
+
+void
+_PG_init(void)
+{
+ 
+    /*
+     * Perform checks before registering any hooks, to avoid erroring out in a
+     * partial state.
+     *
+     * In many cases (e.g. planner and utility hook, to run inside
+     * pg_stat_statements et. al.) we have to be loaded before other hooks
+     * (thus as the innermost/last running hook) to be able to do our
+     * duties. For simplicity insist that all hooks are previously unused.
+     */
+    if (planner_hook != NULL )
+    {
+        ereport(ERROR, (errmsg("CatBoost extension has to be loaded first"),
+                        errhint("Place this extension at the beginning of "
+                                "shared_preload_libraries.")));
     }
 
-    *--p3 = '\0';
-    appendStringInfo(&buf, "\"%s\":",key);
-    if (isdigit(value[0]))
-        appendStringInfo(&buf, "%s",value);
-    else
-        appendStringInfo(&buf, "\"%s\"",value);
-    appendStringInfoChar(&buf, '}');
+    /* intercept planner */
+    prev_planner_hook = planner_hook;
+    planner_hook = my_planner;
+    
+    // prev_ProcessUtility = ProcessUtility_hook;
+    ProcessUtility_hook = ModelProcessUtility;
+
+    ExecutorStart_hook = ModelExecutorStart;
+    ExecutorRun_hook = ModelExecutorRun;
+    // ExplainOneQuery_hook = CitusExplainOneQuery;
+    // prev_ExecutorEnd = ExecutorEnd_hook;
+    ExecutorEnd_hook = ModelExecutorEnd;
 
 
-    elog(NOTICE, "%s", buf.data);
-
-    pfree(buf.data); // входные данные для catBoost
-
-
-    /*  select  query */
-
-
-    p3 = strip(&p, TOKEN_LEN);
-    if (*p3 == 'A'  ||  *p3 == 'a' )
-        p3++;
-    else
-        PG_RETURN_UINT64(0);
-
-    if (*p3 == 'S'  ||  *p3 == 's' )
-        p3++;
-    else
-        PG_RETURN_UINT64(0);
-
-
-    p = strip(&p3, TOKEN_LEN);
-    elog(WARNING, "**** '%s'", p);
-
-
-    PG_RETURN_UINT64(777);
+    // prev_post_parse_analyze_hook = post_parse_analyze_hook;
+    post_parse_analyze_hook = model_post_parse_analyze;
 }

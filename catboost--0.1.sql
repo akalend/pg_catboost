@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION ml_learn_classifier(
                                 name text,          -- name of model
                                 options jsonb,      -- options
-                                query text          -- query for dataset 
+                                table_name text          -- table for dataset 
                                 )     
     RETURNS float AS 
 $$ 
@@ -10,23 +10,22 @@ $$
     from catboost import Pool
     # from sklearn import metrics
 
-    plpy.warning('name',name);
     opt_dict = json.loads(options) 
 
-    plpy.warning(query);
+    query = "SELECT * FROM " + table_name
     rows = plpy.execute(query)
 
     columns = rows.colnames()
     nrows = rows.nrows()
-    plpy.warning("rows is ", nrows)
+    # plpy.warning("rows is ", nrows)
 
     target_name = ''
-    if ('TARGET' in opt_dict):
-        target_name = opt_dict['TARGET']
+    if ('target' in opt_dict):
+        target_name = opt_dict['target']
     else:
         target_name = next(iter(columns), None)
 
-    plpy.warning( 'target:', target_name)
+    # plpy.warning( 'target:', target_name)
 
   
     cat_features_idx = []
@@ -46,9 +45,10 @@ $$
     if target_name in cat_features:
         cat_features.remove(target_name)
 
-    if 'SPLIT' in opt_dict:
-        split = opt_dict['SPLIT']
-        del(opt_dict['SPLIT'])
+    if 'split' in opt_dict:
+        split = opt_dict['split']
+        del(opt_dict['split'])
+        split = split / 100
     else:
         split = 0.20
 
@@ -56,13 +56,12 @@ $$
         plpy.error("split value must be in 0-0.5 interval")
 
     is_class_name = False
-    if ('CLASSES' in opt_dict):
-        class_names = opt_dict['CLASSES']
+    if ('classes' in opt_dict):
+        class_names = opt_dict['classes']
     else:
         is_class_name = True
 
     drop_clolumn_num = columns.index(target_name)
-    plpy.notice( "target_idx:", drop_clolumn_num )
     columns.pop(drop_clolumn_num)
 
     X = []
@@ -82,7 +81,7 @@ $$
         if row[target_name] is None:
             continue
 
-        ###### get classes ######
+	    ###### get classes ######
         if is_class_name:
             if type(row[target_name] ) == type(True):
                 class_names = [0,1]
@@ -106,27 +105,23 @@ $$
         if is_test:
             y_test.append(target)
             X_test.append(append_values)
-            # plpy.warning('train', append_values);
-            # plpy.warning('y_train', target);
         else:        
             y.append(target)
             X.append(append_values)
-            # plpy.warning('test', append_values);
 
-
-    plpy.notice('class_names', class_names)
-    # plpy.warning('class_names',class_names);
-    plpy.warning('options', opt_dict);
+    # plpy.notice('class_names', class_names)
+    # # plpy.warning('class_names',class_names);
+    # plpy.warning('options', opt_dict);
     
     ###### options ######
 
-    depth = opt_dict.get('DEPTH')
-    loss_function = opt_dict.get('LOSS_FUNCTION')
-    eval_metric = opt_dict.get('EVAL_METRIC')
-    iterations = opt_dict.get('ITERATIONS')
-    random_seed = opt_dict.get('RANDOM_SEED')
-    learning_rate = opt_dict.get('LEARNING_RATE')
-    l2_leaf_reg = opt_dict.get('L2_REGULARIZATION')
+    depth = opt_dict.get('rept')
+    loss_function = opt_dict.get('loss_function')
+    eval_metric = opt_dict.get('eval_metric')
+    iterations = opt_dict.get('iterations')
+    random_seed = opt_dict.get('random_seed')
+    learning_rate = opt_dict.get('lerning')
+    l2_leaf_reg = opt_dict.get('l2')
 
     ###### model ######
 
@@ -146,14 +141,8 @@ $$
 
     modelFile = name + '.sql.cbm'
     model.save_model(modelFile)
-    plpy.warning("save to", modelFile)
+    # plpy.warning("save to", modelFile)
     return score;
 
 $$ LANGUAGE plpython3u;
 
-
-
-CREATE OR REPLACE FUNCTION ml_parse(text)
-RETURNS integer
-AS 'MODULE_PATHNAME'
-LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
