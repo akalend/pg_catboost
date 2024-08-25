@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS ml_model (
-    name        Name,
+    name        Name PRIMARY KEY,
     model_file  text,
     model_type  char(1),
     acc         real,
@@ -18,6 +18,7 @@ $$
     import json
     from  catboost import CatBoostClassifier
     from catboost import Pool
+    import os.path
     # from sklearn import metrics
 
     opt_dict = json.loads(options) 
@@ -149,10 +150,19 @@ $$
     model.fit(pool)
     score = model.score(X_test,y_test)
 
+    ## get model path
+    rows = plpy.execute("SHOW ml.model_path")
+    val = rows[0].values()
+    nrows = rows.nrows()
+    vals = list(val)
+    path = vals[0]
+
     modelFile = name + '.sql.cbm'
+    if len(path) > 0:
+        modelFile = os.path.join(path,modelFile)
+    
     model.save_model(modelFile)
-    # plpy.warning("save to", modelFile)
+    ## plpy.warning("save to", modelFile)
     return score;
 
 $$ LANGUAGE plpython3u;
-

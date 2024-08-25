@@ -1,6 +1,8 @@
 /*
  * contrib/debug/debug.c
  */
+#include <sys/stat.h>
+
 #include "postgres.h"
 #include "fmgr.h"
 #include "c.h"
@@ -31,6 +33,7 @@ PG_MODULE_MAGIC;
 
 
 static planner_hook_type prev_planner_hook = NULL;
+static char* model_path = "";
 
 /* Function declarations */
 
@@ -49,7 +52,7 @@ void ModelExecutorEnd(QueryDesc *queryDesc);
 void model_post_parse_analyze(ParseState *pstate,
                              Query *query,
                              JumbleState *jstate);
-
+static bool check_model_path(char **newval, void **extra, GucSource source);
 void _PG_init(void);
 
 
@@ -78,68 +81,109 @@ ModelProcessUtility(PlannedStmt *pstmt,
                         DestReceiver *dest,
                         QueryCompletion *qc)
 {
-
+    ListCell  *lc;
+    StringInfoData  buf;
+    int  ret;
+    char * acc = "" ;
     Node *parsetree = pstmt->utilityStmt;
+    CreateModelStmt  *stm = (CreateModelStmt *)parsetree;
     NodeTag nodeTag = nodeTag(parsetree);
-
+    char model_class;
+    char *model_full_path;
+    int len = 0;
+    char *p, *p2, *parms;
     // // elog(WARNING, "ModelProcessUtility");
 
 
-    if (nodeTag == T_CreateModelStmt) 
+    if (nodeTag != T_CreateModelStmt) 
     {
-        CreateModelStmt *stm = (CreateModelStmt *)parsetree;
-        ListCell *lc;
-        StringInfoData buf;
-        int ret;
-        // uint64 proc;
-
-        initStringInfo(&buf);
-        appendStringInfo(&buf, "SELECT ml_learn_classifier('%s', '{", stm->modelname);
-
-        // // elog(WARNING, "Model name %s  %s", stm->modelname, stm->modelclass ? "regression" : "classification");
         
-
-        foreach(lc, stm->options)
-        {        
-            ModelOptElement *opt;
-            opt = (ModelOptElement *) lfirst(lc);
-            if (opt->value != NULL)
-                // // elog(WARNING,"key:%s value:%s\n",opt->key,opt->value );
-                appendStringInfo(&buf, "\"%s\":\"%s\"",opt->key,opt->value);
-            else
-                appendStringInfo(&buf, "\"%s\":%s",opt->key,opt->value);
-
-            appendStringInfo(&buf, ", ");
-        }
-        
-        buf.data[buf.len-2] = '}';
-        appendStringInfo(&buf, "', '%s')", stm->tablename);
-
-        SPI_connect();
-        ret = SPI_exec(buf.data, 1);
-        // proc = SPI_processed;
-
-        // elog(WARNING, "get %ld records ret = %d" , proc, ret);
-        if (ret > 0 && SPI_tuptable != NULL)
-        {
-            TupleDesc tupdesc = SPI_tuptable->tupdesc;
-            // elog(WARNING, "attr count=%d", tupdesc->natts);
-            SPITupleTable *tuptable = SPI_tuptable;
-            HeapTuple tuple = tuptable->vals[0];
-            char * res = SPI_getvalue(tuple, tupdesc, 1);
-            elog(INFO, "Acc=%s", res);
-        }
-
-        SPI_finish();
-        pfree(buf.data);
-
-
-        CommandCounterIncrement();
-    }
-    else
         standard_ProcessUtility(pstmt, queryString, readOnlyTree,
                                 context, params, queryEnv,
                                 dest, qc);
+    return;
+    }
+    
+
+    initStringInfo(&buf);
+    appendStringInfo(&buf, "SELECT ml_learn_classifier('%s', '{", stm->modelname);
+
+    len = buf.len;    
+
+    foreach(lc, stm->options)
+    {        
+        ModelOptElement *opt;
+        opt = (ModelOptElement *) lfirst(lc);
+        if (opt->value != NULL)
+            appendStringInfo(&buf, "\"%s\":\"%s\"",opt->key,opt->value);
+        else
+            appendStringInfo(&buf, "\"%s\":%s",opt->key,opt->value);
+
+        appendStringInfo(&buf, ", ");
+    }
+    p2 = buf.data + len;
+    len = buf.len - len;
+
+    parms = palloc(len);
+    p = parms;
+    while (len --)
+        *p++ = *p2++;
+    *--p = '\0';
+
+
+    buf.data[buf.len-2] = '}';
+    appendStringInfo(&buf, "', '%s')", stm->tablename);
+
+    SPI_connect();
+    ret = SPI_exec(buf.data, 1);
+    // proc = SPI_processed;
+
+    // elog(WARNING, "get %ld records ret = %d" , proc, ret);
+    if (ret > 0 && SPI_tuptable != NULL)
+    {
+        TupleDesc tupdesc = SPI_tuptable->tupdesc;
+        // elog(WARNING, "attr count=%d", tupdesc->natts);
+        SPITupleTable *tuptable = SPI_tuptable;
+        HeapTuple tuple = tuptable->vals[0];
+        acc = SPI_getvalue(tuple, tupdesc, 1);
+        elog(INFO, "Acc=%s", acc);
+    }
+
+    switch (stm->modelclass) {
+        case 0: model_class = 'C';
+                break;
+        case 1 :model_class = 'R';
+                break;
+        case 2 :model_class = 'N';
+                break;
+        default: elog(ERROR, "Undefined model name");    
+    }
+
+    resetStringInfo(&buf);
+    if (model_path[0] == ' ')
+        appendStringInfo(&buf, "%s.sql.cbm",stm->modelname);
+    else
+        appendStringInfo(&buf, "%s/%s.sql.cbm",model_path, stm->modelname);
+    model_full_path = pstrdup(buf.data);
+    resetStringInfo(&buf);
+
+    appendStringInfo(&buf, "INSERT INTO ml_model(name, acc, model_type, model_file,args) "
+                                        "VALUES ('%s', %s, '%c', '%s', '%s') "
+                           "ON CONFLICT (name) DO UPDATE SET acc=%s, model_type='%c', model_file='%s', args='%s'", 
+                            stm->modelname, acc, model_class, model_full_path, parms,
+                            acc, model_class, model_full_path, parms);
+
+    ret = SPI_exec(buf.data, 0);
+    if (ret != SPI_OK_INSERT)
+    {
+        elog(WARNING, "meta data is not inserting");
+    }
+
+    SPI_finish();
+    pfree(buf.data);
+    pfree(parms);
+    CommandCounterIncrement();
+        
 }
 
 
@@ -173,10 +217,62 @@ model_post_parse_analyze(ParseState *pstate,
     // elog(WARNING, "%s", __FUNCTION__);    
 };
 
+
+/*
+ * Check existing model folder
+ *
+ */
+static bool
+check_model_path(char **newval, void **extra, GucSource source)
+{
+    struct stat st;
+
+    /*
+     * The default value is an empty string, so we have to accept that value.
+     * Our check_configured callback also checks for this and prevents
+     * archiving from proceeding if it is still empty.
+     */
+    if (*newval == NULL || *newval[0] == '\0')
+        return true;
+
+    /*
+     * Make sure the file paths won't be too long.  The docs indicate that the
+     * file names to be archived can be up to 64 characters long.
+     */
+    if (strlen(*newval) + 64 + 2 >= MAXPGPATH)
+    {
+        GUC_check_errdetail("directory too long.");
+        return false;
+    }
+
+    /*
+     * Do a basic sanity check that the specified archive directory exists. It
+     * could be removed at some point in the future, so we still need to be
+     * prepared for it not to exist in the actual archiving logic.
+     */
+    if (stat(*newval, &st) != 0 || !S_ISDIR(st.st_mode))
+    {
+        GUC_check_errdetail("Specified  directory does not exist.");
+        return false;
+    }
+
+    return true;
+}
+
+
 void
 _PG_init(void)
 {
- 
+    DefineCustomStringVariable("ml.model_path",
+                               "Path to model folder",
+                               NULL,
+                               &model_path,
+                               "",
+                               PGC_USERSET,
+                               0,
+                               check_model_path, NULL, NULL);
+
+    MarkGUCPrefixReserved("ml");    
     /*
      * Perform checks before registering any hooks, to avoid erroring out in a
      * partial state.
@@ -209,4 +305,7 @@ _PG_init(void)
 
     // prev_post_parse_analyze_hook = post_parse_analyze_hook;
     post_parse_analyze_hook = model_post_parse_analyze;
+
+
+
 }
