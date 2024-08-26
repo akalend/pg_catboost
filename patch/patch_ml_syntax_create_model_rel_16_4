@@ -52,7 +52,7 @@ index d67565b925..77ea15409f 100644
  # output file names
  my @output_files;
 diff --git a/src/backend/parser/gram.y b/src/backend/parser/gram.y
-index c31b373358..40336a94b9 100644
+index c31b373358..1430b4be57 100644
 --- a/src/backend/parser/gram.y
 +++ b/src/backend/parser/gram.y
 @@ -159,7 +159,6 @@ typedef struct KeyActions
@@ -185,7 +185,7 @@ index c31b373358..40336a94b9 100644
 +			| OptModelElements ',' OptModelElement		{ $$ = lappend($1, $3); }
 +		;
 +
-+		OptModelElement: 
++		OptModelElement:
 +			name name 					{$$ = makeModelElement($1, $2, -1);}
 +			| name Iconst 				{$$ = makeModelElement($1, NULL, $2);}
 +			| name name name 			{$$ = makeModelElement($1, $3, -1);}
@@ -224,7 +224,7 @@ index c31b373358..40336a94b9 100644
  			| REF_P
  			| REFERENCING
  			| REFRESH
-+			| REGRESSION			
++			| REGRESSION
  			| REINDEX
  			| RELATIVE_P
  			| RELEASE
