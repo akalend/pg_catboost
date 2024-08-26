@@ -106,7 +106,7 @@ ModelProcessUtility(PlannedStmt *pstmt,
     
 
     initStringInfo(&buf);
-    appendStringInfo(&buf, "SELECT ml_learn_classifier('%s', '{", stm->modelname);
+    appendStringInfo(&buf, "SELECT ml_learn_classifier('%s', %d,'{", stm->modelname, stm->modelclass);
 
     len = buf.len;    
 
@@ -136,9 +136,7 @@ ModelProcessUtility(PlannedStmt *pstmt,
 
     SPI_connect();
     ret = SPI_exec(buf.data, 1);
-    // proc = SPI_processed;
 
-    // elog(WARNING, "get %ld records ret = %d" , proc, ret);
     if (ret > 0 && SPI_tuptable != NULL)
     {
         TupleDesc tupdesc = SPI_tuptable->tupdesc;

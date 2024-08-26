@@ -10,13 +10,16 @@ CREATE TABLE IF NOT EXISTS ml_model (
 
 CREATE OR REPLACE FUNCTION ml_learn_classifier(
                                 name text,          -- name of model
+                                model_type int,     -- type of model
                                 options jsonb,      -- options
                                 table_name text          -- table for dataset 
-                                )     
+                                )
     RETURNS float AS 
 $$ 
     import json
     from  catboost import CatBoostClassifier
+    from  catboost import CatBoostRegressor
+    from  catboost import CatBoostRanker
     from catboost import Pool
     import os.path
     # from sklearn import metrics
@@ -137,15 +140,38 @@ $$
     ###### model ######
 
     pool = Pool(X, label=y, feature_names=columns, cat_features=cat_features)
-    model = CatBoostClassifier(
-        loss_function=loss_function,
-        eval_metric=eval_metric,
-        iterations=iterations,
-        random_seed=random_seed,
-        learning_rate=learning_rate,
-        class_names=class_names,
-        depth=depth,
-        l2_leaf_reg=l2_leaf_reg )
+    
+    if model_type == 0: 
+        model = CatBoostClassifier(
+            loss_function=loss_function,
+            eval_metric=eval_metric,
+            iterations=iterations,
+            random_seed=random_seed,
+            learning_rate=learning_rate,
+            class_names=class_names,
+            depth=depth,
+            l2_leaf_reg=l2_leaf_reg )
+    elif model_type == 1:
+        model = CatBoostRegressor(
+            loss_function=loss_function,
+            eval_metric=eval_metric,
+            iterations=iterations,
+            random_seed=random_seed,
+            learning_rate=learning_rate,
+            depth=depth,
+            l2_leaf_reg=l2_leaf_reg )
+    elif model_type == 2:
+        model = CatBoostClassifier(
+            loss_function=loss_function,
+            eval_metric=eval_metric,
+            iterations=iterations,
+            random_seed=random_seed,
+            learning_rate=learning_rate,
+            class_names=class_names,
+            depth=depth,
+            l2_leaf_reg=l2_leaf_reg )
+    else:
+        plpy.error("undefined model type")    
 
     model.fit(pool)
     score = model.score(X_test,y_test)
