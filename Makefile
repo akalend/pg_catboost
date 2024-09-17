@@ -21,8 +21,8 @@ PATH += $(shell pg_config  --bindir)
 # PG_LDFLAGS +=   -L$(PG_LIBDIR) $(PYTHON_LIB)  $(python3-config --libs)
 
 # SHLIB_LINK +=  -lpython3.10 -lpq
+SHLIB_LINK_INTERNAL = $(libpq) -lcatboostmodel -lc -lm -pthread
 
-# SHLIB_LINK_INTERNAL += 
 
 #  $(LIBS) 
 #    $(python3-config --includes --ldflags --libs)  -lpython3.10
