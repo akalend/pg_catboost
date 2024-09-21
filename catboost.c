@@ -565,7 +565,6 @@ ml_predict_dataset_inner(PG_FUNCTION_ARGS)
         int memsize = model->cat_count * sizeof(char) * FIELDLEN;
         char* key_field_value = NULL;
 
-
         model->row_fvalues = palloc0( model->num_count * sizeof(float));
         p = model->cat_value_buffer  = palloc0(memsize );
         model->row_cvalues = palloc0(model->cat_count * sizeof(char*));
@@ -751,8 +750,6 @@ ml_predict_dataset_inner(PG_FUNCTION_ARGS)
         SRF_RETURN_DONE(functionContext);
     }
 }
-
-
 
 
 /*
