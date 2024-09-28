@@ -68,6 +68,7 @@ static char* model_path = "";
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(ml_predict_dataset_inner);
+PG_FUNCTION_INFO_V1(ml_predict_tmp);
 
 static double
 sigmoid(double x) {
@@ -380,6 +381,376 @@ PredictGetDatum(char* id, int64 row_no, float8 predict, char* className,
     return (Datum) HeapTupleGetDatum(htuple);
 }
 
+
+Datum
+ml_predict_tmp(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *functionContext = NULL;
+
+    if (SRF_IS_FIRSTCALL())
+    {
+        MemoryContext oldContext;
+        TupleDesc tupleDescriptor;
+        ArrayDatum  cat_fields = {0, NULL};
+        StringInfoData buf;
+        ModelCalcerHandle* modelHandle;
+        // SPITupleTable   *spi_tuptable;
+        const char*     model_info;
+        const int resultColumnCount = 3;
+        size_t          model_float_feature_count;
+        size_t          model_cat_feature_count ;
+        size_t          model_dimension;
+        size_t          featureCount = 0;
+        char            **features;
+        size_t          cat_feature_counter=0;
+        size_t          feature_counter=0;
+        int             i;
+        MLmodel         model;
+        text            *filename;
+        char            *key_field;
+        int             res;
+        bool            function_type = PG_GETARG_BOOL(3);
+        char            **arr_cat_fields = NULL;
+
+        /* create a function context for cross-call persistence */
+        functionContext = SRF_FIRSTCALL_INIT();
+
+        filename = PG_GETARG_TEXT_PP(0);
+
+
+        LoadModel(filename, &modelHandle);
+
+        /* switch to memory context appropriate for multiple function calls */
+        oldContext = MemoryContextSwitchTo(
+            functionContext->multi_call_memory_ctx);
+
+        initStringInfo(&buf);
+
+        features = getModelFeatures(modelHandle, &featureCount);
+
+        model_cat_feature_count = (size_t)GetCatFeaturesCount(modelHandle);
+
+        if (model_cat_feature_count)
+        {
+            size_t cat_feature_count;
+            size_t* indices;
+
+            if (!GetCatFeatureIndices(modelHandle, &indices, &cat_feature_count))
+            {
+                elog(ERROR, "cat feature %s", GetErrorString());
+            }
+
+            arr_cat_fields = palloc( sizeof(char*) * cat_feature_count);
+
+            for (i=0; i < cat_feature_count; i++)
+            {
+                arr_cat_fields[i] = pstrdup(features[indices[i]]);
+            }
+
+            free(indices); // allocated by CatBoostModel::GetCatFeatureIndices()
+        }
+
+        key_field = text_to_cstring(PG_GETARG_TEXT_PP(2));
+
+        model = (MLmodel) palloc0(sizeof(MLmodelData));
+
+        model->modelHandle = modelHandle;
+        model_info = getModelParms(model->modelHandle);
+        SPI_connect();
+        model->modelType = getModelType(model->modelHandle, model_info);
+        model->modelClasses = getModelClasses(model->modelHandle, model_info);
+
+        if (key_field)
+            model->keyField = pstrdup(key_field);
+
+        if (function_type) {
+            char  *query = text_to_cstring(PG_GETARG_TEXT_PP(1));
+            res = SPI_exec(query, 0);
+        }
+        else
+        {
+            char  *tabname = text_to_cstring(PG_GETARG_TEXT_PP(1));
+            appendStringInfo(&buf, "SELECT * FROM %s;", tabname);
+            res = SPI_exec(buf.data, 0);
+        }
+        if (res < 1 || SPI_tuptable == NULL)
+        {
+            elog(ERROR, "Query %s error", buf.data);
+        }
+
+        model->cat_fields = cat_fields;
+
+        model->spi_tuptable = SPI_tuptable;
+        model->spi_tupdesc  = SPI_tuptable->tupdesc;
+        model->attCount = SPI_tuptable->tupdesc->natts;
+
+
+        model->iscategory = palloc0( model->attCount * sizeof(int8));
+        model_float_feature_count = (size_t)GetFloatFeaturesCount(model->modelHandle);
+        model_dimension = (size_t)GetDimensionsCount(model->modelHandle);
+
+        for(i=0; i < model->attCount; i++)
+        {
+            if(! checkInArray(ModelGetFieldName(i), features, featureCount))
+            {
+                model->iscategory[i] = -1;  // not in features
+                continue;
+            }
+            if ( checkInArray(ModelGetFieldName(i), arr_cat_fields, model_cat_feature_count))
+            {
+                cat_feature_counter ++;
+                model->iscategory[i] = 1;
+            }
+            else
+            {
+                feature_counter ++;
+                model->iscategory[i] = 0;
+            }
+        }
+
+         //  check model features
+        if (feature_counter != model_float_feature_count)
+        {
+            elog(ERROR,
+                "count of numeric features is not valid, must be %ld is %ld",
+                model_float_feature_count, feature_counter
+            );
+        }
+
+        if (cat_feature_counter != model_cat_feature_count)
+        {
+            elog(ERROR,
+                "count of categocical features is not valid, must be %ld is %ld",
+                model_cat_feature_count, cat_feature_counter
+            );
+        }
+
+        model->current = 0;
+        functionContext->user_fctx = model;
+        functionContext->max_calls = SPI_processed;
+        model->dimension = model_dimension;
+        model->cat_count = cat_feature_counter;
+        model->num_count = feature_counter;
+
+        /*
+         * This tuple descriptor must match the output parameters declared for
+         * the function in pg_proc.
+         */
+        tupleDescriptor = CreateTemplateTupleDesc(resultColumnCount);
+        TupleDescInitEntry(tupleDescriptor, (AttrNumber) 1, key_field,
+                           TEXTOID, -1, 0);
+        TupleDescInitEntry(tupleDescriptor, (AttrNumber) 2, "predict",
+                           FLOAT8OID, -1, 0);
+        TupleDescInitEntry(tupleDescriptor, (AttrNumber) 3, "class",
+                           TEXTOID, -1, 0);
+
+        functionContext->tuple_desc =  BlessTupleDesc(tupleDescriptor);
+
+        MemoryContextSwitchTo(oldContext);
+    }
+
+    functionContext = SRF_PERCALL_SETUP();
+
+    if (  ((MLmodel) functionContext->user_fctx)->current < functionContext->max_calls)
+    {
+        char*   class;
+        int     feature_counter = 0;
+        int     cat_feature_counter = 0;
+        MLmodel model = (MLmodel)functionContext->user_fctx;
+        Datum   recordDatum;
+        int j;
+        char *p;
+        char* yes = "yes";
+        char* no = "no";
+        HeapTuple   spi_tuple = ((MLmodel)functionContext->user_fctx)->spi_tuptable->vals[((MLmodel)functionContext->user_fctx)->current];
+        int memsize = model->cat_count * sizeof(char) * FIELDLEN;
+        char* key_field_value = NULL;
+
+        model->row_fvalues = palloc0( model->num_count * sizeof(float));
+        p = model->cat_value_buffer  = palloc0(memsize );
+        model->row_cvalues = palloc0(model->cat_count * sizeof(char*));
+
+        model->result_pa  = (double*) palloc( sizeof(double) * model->dimension);
+        model->result_exp = (double*) palloc( sizeof(double) * model->dimension);
+
+        for(j=0; j < model->attCount; j++)
+        {
+            char    *value;
+            value = SPI_getvalue(spi_tuple, model-> spi_tupdesc, j+1);
+
+            if (strcmp(model->keyField,  ModelGetFieldName(j)) == 0)
+            {
+                key_field_value = value;
+            }
+
+            if( model->iscategory[j] == -1) // not in features
+                continue;
+
+            if( model->iscategory[j] == 0)
+            {
+                if (value == 0 )
+                {
+                    model->row_fvalues[feature_counter] = QNaN;
+                }
+                else
+                {
+                    int res;
+                    res  = sscanf(value, "%f", &model->row_fvalues[feature_counter]);
+                    if(res < 1)
+                    {
+                        elog(WARNING,"error input j/cnt=%d/%d %f\n", j,
+                            feature_counter, model->row_fvalues[feature_counter]);
+                    }
+                }
+
+                feature_counter++;
+            }
+
+            if( model->iscategory[j] == 1)
+            {
+                if (!value)
+                {
+                    model->row_cvalues[cat_feature_counter] = pstrdup("NaN");
+                    p += 3;
+                }
+                else
+                {
+                    model->row_cvalues[cat_feature_counter] = strcpy(p, value);
+                    p += strlen(value);
+                }
+                cat_feature_counter++;
+                *p = '\0';
+                p++;
+            }
+        } // column
+
+        if (!CalcModelPredictionSingle(model->modelHandle,
+                    model->row_fvalues, feature_counter,
+                    (const char** )model->row_cvalues, cat_feature_counter,
+                    model->result_pa, model->dimension)
+            )
+        {
+            StringInfoData str;
+            initStringInfo(&str);
+            for(j = 0; j < feature_counter; j++)
+            {
+                appendStringInfo(&str, "%f,", model->row_fvalues[j]);
+            }
+            elog( ERROR, "CalcModelPrediction error message: %s \nrow num=%ld",
+                    GetErrorString(),  model->current );
+        }
+
+        if (strncmp("\"MultiClass\"", model->modelType, 12) == 0)
+        {
+            char  ***p;
+            double max = 0., sm = 0.;
+            int max_i = -1;
+            char* out = model->keyField;
+
+            for( j = 0; j < model->dimension; j ++)
+            {
+                model->result_exp[j] = exp(model->result_pa[j]);
+                sm += model->result_exp[j];
+            }
+            for( j = 0; j < model->dimension; j ++)
+            {
+                model->result_exp[j] = model->result_exp[j] / sm;
+                if (model->result_exp[j] > max){
+                    max = model->result_exp[j];
+                    max_i = j;
+                }
+            }
+
+            p = model->modelClasses + max_i;
+
+            if (key_field_value)
+            {
+                out = key_field_value;
+            }
+
+
+            recordDatum = PredictGetDatum(out, model->current, max, (char*)*p,
+                            functionContext->tuple_desc);
+
+        }
+        else if (strcmp(model->modelType, "\"RMSE\"") == 0)
+        {
+            char* out = "";
+
+            if (key_field_value)
+            {
+                out = key_field_value;
+            }
+            recordDatum = PredictGetDatum(out, model->current, model->result_pa[0], NULL,
+                            functionContext->tuple_desc);
+
+        }
+        else if (strncmp("\"Logloss\"", model->modelType, 9) == 0)
+        {
+            double probability = sigmoid(model->result_pa[0]);
+            char* out = model->keyField;
+            int n = 0;
+            if (probability > 0.5)
+            {
+                n = 1;
+            }
+
+            if (key_field_value)
+            {
+                out = key_field_value;
+            }
+            recordDatum = PredictGetDatum(out, model->current, probability,
+                            (char*)*(model->modelClasses + n),
+                            functionContext->tuple_desc);
+        }
+        else
+        {
+            double probability = sigmoid(model->result_pa[0]);
+            char* out = model->keyField;
+            if (probability > 0.5)
+            {
+                class=yes;
+            }
+            else
+            {
+                class=no;
+            }
+
+            if (key_field_value)
+            {
+                out = key_field_value;
+            }
+
+            recordDatum = PredictGetDatum(out, model->current,
+                                          probability, class,
+                                          functionContext->tuple_desc);
+
+        }
+
+
+        ((MLmodel) functionContext->user_fctx)->current++;
+
+        pfree(model->row_fvalues);
+        pfree(model->cat_value_buffer);
+        pfree(model->row_cvalues);
+
+        pfree(model->result_pa);
+        pfree(model->result_exp);
+
+
+        SRF_RETURN_NEXT(functionContext, recordDatum);
+    }
+    else
+    {
+        MLmodel model = (MLmodel)functionContext->user_fctx;
+        pfree(model->keyField);
+
+        if (SPI_finish() != SPI_OK_FINISH)
+            elog(WARNING, "could not finish SPI");
+
+        SRF_RETURN_DONE(functionContext);
+    }
+}
 
 Datum
 ml_predict_dataset_inner(PG_FUNCTION_ARGS)

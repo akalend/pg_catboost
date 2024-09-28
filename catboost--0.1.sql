@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS ml_model (
     model_type  char(1),
     acc         real,
     info        text,
-    args        text
+    args        text,
+    data        bytea
     );
 
 
@@ -19,6 +20,19 @@ CREATE OR REPLACE FUNCTION ml_predict_internal(
 ) RETURNS setof RECORD
 AS 'MODULE_PATHNAME','ml_predict_dataset_inner'
 LANGUAGE  C STRICT PARALLEL RESTRICTED;
+
+CREATE OR REPLACE FUNCTION ml_predict_tmp(
+    model text,
+    tablename text,
+    join_field text DEFAULT 'row',
+    OUT index text,
+    OUT predict float,
+    OUT class text
+) RETURNS setof RECORD
+AS 'MODULE_PATHNAME','ml_predict_tmp'
+LANGUAGE  C STRICT PARALLEL RESTRICTED;
+
+
 
 
 CREATE OR REPLACE FUNCTION ml_predict(
@@ -222,6 +236,17 @@ $$
         modelFile = os.path.join(path,modelFile)
 
     model.save_model(modelFile)
+
+    f = open(modelFile, 'rb')
+    data = f.read()
+
+    query = "DELETE FROM ml_model WHERE name='{}'".format(name)
+    plpy.execute(query)
+
+    query = "INSERT INTO ml_model(name, data, acc, args) VALUES ($1, $2, $3, $4)"
+    plan = plpy.prepare(query, ['text', 'bytea', 'real', 'text'])
+
+    plpy.execute(plan, [name, data, score, options])
 
     return score;
 $$ LANGUAGE plpython3u;
