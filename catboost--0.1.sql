@@ -21,18 +21,11 @@ CREATE OR REPLACE FUNCTION ml_predict_internal(
 AS 'MODULE_PATHNAME','ml_predict_dataset_inner'
 LANGUAGE  C STRICT PARALLEL RESTRICTED;
 
-CREATE OR REPLACE FUNCTION ml_predict_tmp(
-    model text,
-    tablename text,
-    join_field text DEFAULT 'row',
-    OUT index text,
-    OUT predict float,
-    OUT class text
-) RETURNS setof RECORD
-AS 'MODULE_PATHNAME','ml_predict_tmp'
-LANGUAGE  C STRICT PARALLEL RESTRICTED;
 
-
+CREATE OR REPLACE FUNCTION ml_test()
+RETURNS text
+AS 'catboost','ml_test'
+LANGUAGE  C STRICT;
 
 
 CREATE OR REPLACE FUNCTION ml_predict(
@@ -46,6 +39,7 @@ CREATE OR REPLACE FUNCTION ml_predict(
 AS 'SELECT ml_predict_internal($1,$2,$3, FALSE);'
 LANGUAGE SQL VOLATILE STRICT;
 
+
 CREATE OR REPLACE FUNCTION ml_predict_query(
     model text,
     query text,
@@ -57,10 +51,12 @@ CREATE OR REPLACE FUNCTION ml_predict_query(
 AS 'SELECT ml_predict_internal($1,$2,$3, TRUE);'
 LANGUAGE SQL VOLATILE STRICT;
 
+
+
 CREATE OR REPLACE FUNCTION ml_learn(
                                 name text,          -- name of model
                                 model_type int,     -- type of model
-                                options jsonb,      -- options
+                                options text,      -- options
                                 table_name text     -- table for dataset 
                                 )
     RETURNS float AS 
@@ -72,10 +68,14 @@ $$
     from catboost import Pool
     import os.path
 
+    plpy.warning('options:', options)
+    #plpy.warning(table_name)
+
+
     class_names = []
     opt_dict = json.loads(options) 
     query = "SELECT * FROM " + table_name
-    rows = plpy.execute(query)
+    rows = plpy.execute(query)  # line 17
 
     columns = rows.colnames()
     nrows = rows.nrows()
@@ -193,6 +193,8 @@ $$
     
     ###### options ######
 
+    plpy.warning("class_names", class_names)
+
     drop_clolumn_num = use_columns.index(target_name)
     use_columns.pop(drop_clolumn_num)
 
@@ -225,28 +227,26 @@ $$
     score = model.score(X_test,y_test)
 
     ## get model path
-    rows = plpy.execute("SHOW ml.model_path")
-    val = rows[0].values()
-    nrows = rows.nrows()
-    vals = list(val)
-    path = vals[0]
+    
+    ## будет /tmp и рандомное имя
+    modelFile = '/tmp' + name + '.sql.cbm'
+    # modelFile = os.path.join(path,modelFile)
 
-    modelFile = name + '.sql2.cbm'
-    if len(path) > 0:
-        modelFile = os.path.join(path,modelFile)
+#    model.save_model(modelFile)
 
-    model.save_model(modelFile)
+#    f = open(modelFile, 'rb')
+#    data = f.read()
 
-    f = open(modelFile, 'rb')
-    data = f.read()
+#    query = "DELETE FROM ml_model WHERE name='{}'".format(name)
+#    plpy.execute(query)
 
-    query = "DELETE FROM ml_model WHERE name='{}'".format(name)
-    plpy.execute(query)
+#    plpy.warning(query)
 
-    query = "INSERT INTO ml_model(name, data, acc, args) VALUES ($1, $2, $3, $4)"
-    plan = plpy.prepare(query, ['text', 'bytea', 'real', 'text'])
+#    query = "INSERT INTO ml_model(name, data, acc, args) VALUES ($1, $2, $3, $4)"
+#    plan = plpy.prepare(query, ['text', 'bytea', 'real', 'text'])
 
-    plpy.execute(plan, [name, data, score, options])
+#   plpy.execute(plan, [name, data, score, options])
 
+#   plpy.warning('acc:', score)
     return score;
 $$ LANGUAGE plpython3u;

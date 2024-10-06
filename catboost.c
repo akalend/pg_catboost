@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <math.h>
 #include <sys/stat.h>
+#include <ctype.h>
 // #include <stdbool.h>
 
 #include "postgres.h"
@@ -16,16 +17,28 @@
 #include "funcapi.h"
 #include "catboost.h"
 
+
 // #include "access/htup.h"
 // #include "access/slru.h"
 // #include "access/amapi.h"
 // #include "access/heapam.h"
 // #include "access/htup_details.h"
-// #include "access/table.h"
-// #include "access/tableam.h"
+
+#include "access/skey.h"
+#include "access/stratnum.h"
+#include "access/tableam.h"
 // #include "catalog/indexing.h"
 // #include "executor/executor.h"
+
+
+#include "catalog/pg_proc.h"
+#include "common/jsonapi.h"
 #include "executor/spi.h"
+
+
+
+
+#include "mb/pg_wchar.h"
 // #include "nodes/parsenodes.h"
 // #include "nodes/primnodes.h"
 // #include "nodes/pg_list.h"
@@ -37,13 +50,15 @@
 #include "utils/jsonb.h"
 #include "utils/jsonfuncs.h"
 #include "utils/guc.h"
+
 // #include "utils/fmgrprotos.h"
-// #include "utils/fmgroids.h"
+#include "utils/fmgroids.h"
 // #include "utils/memutils.h"
 // #include "utils/numeric.h"
 // #include "utils/rel.h"
-// #include "utils/snapmgr.h"
 // #include "utils/varlena.h"
+
+#include "utils/syscache.h"
 
 
 
@@ -69,6 +84,45 @@ PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(ml_predict_dataset_inner);
 PG_FUNCTION_INFO_V1(ml_predict_tmp);
+
+PG_FUNCTION_INFO_V1(ml_test);
+
+
+#define QUOTEMARK '"'
+
+
+Datum
+ml_test(PG_FUNCTION_ARGS)
+{
+   //  char * names =" name1 ,   name2,   name3, mmm4m344  ";
+   //  char * out, *p = names, *p2;
+
+   //  elog(WARNING, "text='%s'", names);
+   //  p2 = out = palloc0(256);
+    
+   // while (p = strip(p))
+   //  {    
+   //      if (*p == 0)
+   //          break;
+   //      *(p2++) = QUOTEMARK;
+   //      while ( isalpha(*p) || isdigit(*p) )
+   //      {
+   //          *p2++ = *p++ ;
+   //      }
+   //      *(p2++) = QUOTEMARK;
+   //      *(p2++) = ',';
+   //  }
+   //  *(p2--) = ' '; 
+   //  *(p2--) = ' '; 
+    
+   //  elog(WARNING, "text='%s'", out);
+
+    PG_RETURN_NULL();
+}
+
+
+
+
 
 static double
 sigmoid(double x) {
