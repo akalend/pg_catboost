@@ -19,10 +19,11 @@ typedef struct FormData_model
 {
     NameData name;
     text* file;
-    char type;
-    float acc;
+    BpChar type;
+    float4 acc;
     text* info;
     text* args;
+    bytea data;
 } FormData_model;
 
 typedef FormData_model* Form_model;
@@ -35,6 +36,7 @@ typedef enum Anum_model
     Anum_ml_model_acc,
     Anum_ml_model_info,
     Anum_ml_model_args,
+    Anum_ml_model_data,
     _Anum_ml_max,
 } Anum_model;
 

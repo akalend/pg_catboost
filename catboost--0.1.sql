@@ -56,8 +56,9 @@ LANGUAGE SQL VOLATILE STRICT;
 CREATE OR REPLACE FUNCTION ml_learn(
                                 name text,          -- name of model
                                 model_type int,     -- type of model
-                                options text,      -- options
-                                table_name text     -- table for dataset 
+                                options text,       -- options
+                                table_name text,    -- table for dataset
+                                filename text       -- name of file for save model    
                                 )
     RETURNS float AS 
 $$ 
@@ -69,8 +70,8 @@ $$
     import os.path
 
     plpy.warning('options:', options)
-    #plpy.warning(table_name)
-
+    plpy.warning('filename:', filename)
+    return 0.1;
 
     class_names = []
     opt_dict = json.loads(options) 
@@ -226,27 +227,8 @@ $$
     model.fit(pool)
     score = model.score(X_test,y_test)
 
-    ## get model path
-    
-    ## будет /tmp и рандомное имя
-    modelFile = '/tmp' + name + '.sql.cbm'
-    # modelFile = os.path.join(path,modelFile)
+    model.save_model(filename)
+    plpy.warning("model saved as", filename)
 
-#    model.save_model(modelFile)
-
-#    f = open(modelFile, 'rb')
-#    data = f.read()
-
-#    query = "DELETE FROM ml_model WHERE name='{}'".format(name)
-#    plpy.execute(query)
-
-#    plpy.warning(query)
-
-#    query = "INSERT INTO ml_model(name, data, acc, args) VALUES ($1, $2, $3, $4)"
-#    plan = plpy.prepare(query, ['text', 'bytea', 'real', 'text'])
-
-#   plpy.execute(plan, [name, data, score, options])
-
-#   plpy.warning('acc:', score)
     return score;
 $$ LANGUAGE plpython3u;
