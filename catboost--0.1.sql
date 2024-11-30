@@ -69,10 +69,6 @@ $$
     from catboost import Pool
     import os.path
 
-    plpy.warning('options:', options)
-    plpy.warning('filename:', filename)
-    return 0.1;
-
     class_names = []
     opt_dict = json.loads(options) 
     query = "SELECT * FROM " + table_name
@@ -228,7 +224,6 @@ $$
     score = model.score(X_test,y_test)
 
     model.save_model(filename)
-    plpy.warning("model saved as", filename)
 
     return score;
 $$ LANGUAGE plpython3u;

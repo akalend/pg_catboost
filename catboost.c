@@ -126,9 +126,55 @@ GetPredictTableFormByName(const char *tablename)
 	return form;
 }
 
-
 Datum
 ml_test(PG_FUNCTION_ARGS)
+{
+
+	TupleDesc   tupdesc;
+
+	Datum  *values;
+	bool   *nulls;
+
+	Relation rel;
+	Oid MetadataTableOid;
+	HeapTuple tup;
+	int i;
+
+	NameData name_data;
+	// strcpy(name_data.data, "titanic_1" );
+	
+	namestrcpy(&name_data, "titanic_2");
+	
+	elog(WARNING, "Ins %s", name_data.data);
+
+	MetadataTableOid = get_relname_relid("ml_model", PG_PUBLIC_NAMESPACE);
+
+	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
+	nulls = (bool *) palloc(sizeof(bool) * Natts_model);
+
+
+	memset(nulls, true, sizeof(nulls));
+	values[0] = NameGetDatum(&name_data);
+	nulls[0] = false;
+	
+
+	// MetadataTableIdxOid =16496;
+	rel = table_open(MetadataTableOid, RowExclusiveLock);
+
+	tupdesc = RelationGetDescr(rel);
+
+	tup = heap_form_tuple(tupdesc, values, nulls);
+
+	CatalogTupleInsert(rel, tup);
+	heap_freetuple(tup);
+
+	table_close(rel, RowExclusiveLock);
+
+}
+
+
+Datum
+ml_test_upd(PG_FUNCTION_ARGS)
 {
 
 	TupOutputState *tstate;
@@ -163,22 +209,23 @@ ml_test(PG_FUNCTION_ARGS)
 	nulls = (bool *) palloc0(sizeof(bool) * Natts_model);
 	doReplace = (bool *) palloc0(sizeof(bool) * Natts_model);
 
-	tupdesc = CreateTemplateTupleDesc(Natts_model);
+	// tupdesc = CreateTemplateTupleDesc(Natts_model);
 
 
-	TupleDescInitEntry(tupdesc, 1, "name", NAMEOID, -1, 0);
-	TupleDescInitEntry(tupdesc, 2, "file", TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, 3, "model_type", BPCHAROID, -1, 0); // 1042
-	TupleDescInitEntry(tupdesc, 4, "acc", FLOAT4OID, -1, 0);
-	TupleDescInitEntry(tupdesc, 5, "info", TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, 6, "args", TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, 7, "data", BYTEAOID, -1, 0);
+	// TupleDescInitEntry(tupdesc, 1, "name", NAMEOID, -1, 0);
+	// TupleDescInitEntry(tupdesc, 2, "file", TEXTOID, -1, 0);
+	// TupleDescInitEntry(tupdesc, 3, "model_type", BPCHAROID, -1, 0); // 1042
+	// TupleDescInitEntry(tupdesc, 4, "acc", FLOAT4OID, -1, 0);
+	// TupleDescInitEntry(tupdesc, 5, "info", TEXTOID, -1, 0);
+	// TupleDescInitEntry(tupdesc, 6, "args", TEXTOID, -1, 0);
+	// TupleDescInitEntry(tupdesc, 7, "data", BYTEAOID, -1, 0);
 
 
 	// MetadataTableIdxOid =16496;
 	rel = table_open(MetadataTableOid, RowExclusiveLock);
 	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
 
+	tupdesc = RelationGetDescr(rel);
 
 
 	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
@@ -213,7 +260,7 @@ ml_test(PG_FUNCTION_ARGS)
 		elog(WARNING,"record NOT FOUND");
 	} else
 	{
-		values[3] = Float4GetDatum(0.998);
+		values[3] = Float4GetDatum(0.7777);
 		doReplace[3]  = true;
 
 		Form_pg_attribute atti;
