@@ -93,16 +93,17 @@ $$
             bool_types.append(i)
         i += 1
 
-    is_ignored = False
+    is_not_ignore = False
     ignored_names = None
     if ('ignored' in opt_dict):
         ignored_names = list(opt_dict['ignored'])
-        is_ignored = True
+        is_not_ignore = True
 
     ignored_idx = []
-    for i in range(0,len(columns)):
-        if columns[i] in ignored_names:
-            ignored_idx.append(i)
+    if is_not_ignore:
+        for i in range(0,len(columns)):
+            if columns[i] in ignored_names:
+                ignored_idx.append(i)
 
 
     cat_features = []
@@ -132,7 +133,7 @@ $$
 
     use_columns = []
     for it in columns:
-        if it in ignored_names:
+        if is_not_ignore and it in ignored_names:
             continue
         use_columns.append(it)
 
