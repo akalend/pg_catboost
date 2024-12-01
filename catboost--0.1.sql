@@ -22,7 +22,7 @@ AS 'MODULE_PATHNAME','ml_predict_dataset_inner'
 LANGUAGE  C STRICT PARALLEL RESTRICTED;
 
 
-CREATE OR REPLACE FUNCTION ml_test()
+CREATE OR REPLACE FUNCTION ml_test(name Name)
 RETURNS text
 AS 'catboost','ml_test'
 LANGUAGE  C STRICT;
@@ -190,7 +190,7 @@ $$
     
     ###### options ######
 
-    plpy.warning("class_names", class_names)
+    # plpy.warning("class_names", class_names)
 
     drop_clolumn_num = use_columns.index(target_name)
     use_columns.pop(drop_clolumn_num)

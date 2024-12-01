@@ -139,36 +139,39 @@ ml_test(PG_FUNCTION_ARGS)
 	Oid MetadataTableOid;
 	HeapTuple tup;
 	int i;
-
+	// Name name = PG_GETARG_NAME(0);
 	NameData name_data;
 	// strcpy(name_data.data, "titanic_1" );
 	
 	namestrcpy(&name_data, "titanic_2");
 	
-	elog(WARNING, "Ins %s", name_data.data);
+	// elog(WARNING, "Ins %s", name_data.data);
+
 
 	MetadataTableOid = get_relname_relid("ml_model", PG_PUBLIC_NAMESPACE);
+	// 32826
+
+	rel = table_open(MetadataTableOid, RowExclusiveLock);
 
 	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
 	nulls = (bool *) palloc(sizeof(bool) * Natts_model);
 
 
 	memset(nulls, true, sizeof(nulls));
+	// values[0] = NameGetDatum(name);
 	values[0] = NameGetDatum(&name_data);
 	nulls[0] = false;
 	
 
-	// MetadataTableIdxOid =16496;
-	rel = table_open(MetadataTableOid, RowExclusiveLock);
+	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
-	tupdesc = RelationGetDescr(rel);
-
-	tup = heap_form_tuple(tupdesc, values, nulls);
 
 	CatalogTupleInsert(rel, tup);
 	heap_freetuple(tup);
 
 	table_close(rel, RowExclusiveLock);
+
+	PG_RETURN_NULL();
 
 }
 
