@@ -132,6 +132,70 @@ ml_test(PG_FUNCTION_ARGS)
 
 	TupleDesc   tupdesc;
 
+	Relation rel, idxrel;;
+	Oid MetadataTableOid;
+	Oid MetadataTableIdxOid;
+	HeapTuple tup;
+	ScanKeyData skey[1];
+	IndexScanDesc scan;
+	int i;
+	// Name name = PG_GETARG_NAME(0);
+	NameData name_data;
+	TupleTableSlot* slot;
+
+	bool found = false;
+	// strcpy(name_data.data, "titanic_1" );
+	
+	namestrcpy(&name_data, "titanic1");
+	
+	// elog(WARNING, "Ins %s", name_data.data);
+
+
+	MetadataTableOid = get_relname_relid("ml_model", PG_PUBLIC_NAMESPACE);
+	MetadataTableIdxOid = get_relname_relid("ml_model_pkey", PG_PUBLIC_NAMESPACE);
+
+
+	rel = table_open(MetadataTableOid, RowExclusiveLock);
+	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
+
+	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
+
+	ScanKeyInit(&skey[0],
+				Anum_ml_name ,
+				BTGreaterEqualStrategyNumber, F_NAMEEQ,
+				NameGetDatum(&name_data));
+
+	index_rescan(scan, skey, 1, NULL /* orderbys */, 0 /* norderbys */);
+
+	slot = table_slot_create(rel, NULL);
+	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	{
+		bool should_free;
+		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
+		
+		// heap_deform_tuple(tup,  tupdesc, values, nulls);
+		if(should_free) heap_freetuple(tup);
+		found = true;
+	}
+
+	elog(WARNING, "found=%d", found);
+
+	index_endscan(scan);
+	index_close(idxrel, AccessShareLock);
+	table_close(rel, RowExclusiveLock);
+
+	ExecDropSingleTupleTableSlot(slot);
+
+
+	PG_RETURN_NULL();
+}
+
+Datum
+ml_test_ins(PG_FUNCTION_ARGS)
+{
+
+	TupleDesc   tupdesc;
+
 	Datum  *values;
 	bool   *nulls;
 
