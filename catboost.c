@@ -1024,6 +1024,7 @@ ml_predict_tmp(PG_FUNCTION_ARGS)
 			}
 		} // column
 
+
 		if (!CalcModelPredictionSingle(model->modelHandle,
 					model->row_fvalues, feature_counter,
 					(const char** )model->row_cvalues, cat_feature_counter,
@@ -1393,6 +1394,15 @@ ml_predict_dataset_inner(PG_FUNCTION_ARGS)
 				p++;
 			}
 		} // column
+
+		{			
+			int32 ii;
+			elog(WARNING, "----------float----------");
+			for (ii=0; ii<feature_counter; ii++){
+				elog(WARNING,"%6.2f", model->row_fvalues[ii]);
+			}
+		}
+
 
 		if (!CalcModelPredictionSingle(model->modelHandle,
 					model->row_fvalues, feature_counter,

@@ -207,19 +207,44 @@ $$
     ###### model ######
 
     pool = Pool(X, label=y, feature_names=use_columns, cat_features=cat_features)
-    model = CatBoostClassifier(
-        loss_function=loss_function,
-        eval_metric=eval_metric,
-        iterations=iterations,
-        random_seed=random_seed,
-        learning_rate=learning_rate,
-        class_names=class_names,
-        # ignored_features=ignored_names,
-        depth=depth,
-        l2_leaf_reg=l2_leaf_reg )
+    
 
-#    else:
-#        plpy.error("undefined model type")    
+    if model_type == 0:             # classification
+        model = CatBoostClassifier(
+            loss_function=loss_function,
+            eval_metric=eval_metric,
+            iterations=iterations,
+            random_seed=random_seed,
+            learning_rate=learning_rate,
+            class_names=class_names,
+            # ignored_features=ignored_names,
+            depth=depth,
+            l2_leaf_reg=l2_leaf_reg )
+    elif model_type == 1:             # regresssion
+        model = CatBoostRegressor(
+            loss_function=loss_function,
+            eval_metric=eval_metric,
+            iterations=iterations,
+            random_seed=random_seed,
+            learning_rate=learning_rate,
+            class_names=class_names,
+            # ignored_features=ignored_names,
+            depth=depth,
+            l2_leaf_reg=l2_leaf_reg )
+
+    elif model_type == 2:             # ranking
+        model = CatBoostRanker(
+            loss_function=loss_function,
+            eval_metric=eval_metric,
+            iterations=iterations,
+            random_seed=random_seed,
+            learning_rate=learning_rate,
+            class_names=class_names,
+            # ignored_features=ignored_names,
+            depth=depth,
+            l2_leaf_reg=l2_leaf_reg )
+    else:
+        plpy.error("undefined model type", model_type)    
 
     model.fit(pool)
     score = model.score(X_test,y_test)
