@@ -11,6 +11,13 @@ enum model_type_t {
     MODEL_RANKING,
 };
 
+enum ml_class_state_t {
+    ML_STATE_NONE,
+    ML_STATE_KEY,
+    ML_STATE_BEG_ARRAY,
+    ML_STATE_BND_ARRAY,
+};
+
 
 #define ML_TABLE_NAME "ml_model"
 #define ML_TABLE_PKEY "ml_model_pkey"

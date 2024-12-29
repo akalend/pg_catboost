@@ -105,6 +105,46 @@ PG_FUNCTION_INFO_V1(ml_predict_tmp);
 
 PG_FUNCTION_INFO_V1(ml_test);
 
+static char *
+read_whole_file(const char *filename, int *length)
+{
+	char	   *buf;
+	FILE	   *file;
+	size_t		bytes_to_read;
+	struct stat fst;
+
+	if (stat(filename, &fst) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not stat file \"%s\": %m", filename)));
+
+	if (fst.st_size > (MaxAllocSize - 1))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("file \"%s\" is too large", filename)));
+	bytes_to_read = (size_t) fst.st_size;
+
+
+	if ((file = AllocateFile(filename, PG_BINARY_R)) == NULL)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\" for reading: %m",
+						filename)));
+
+	buf = (char *) palloc(bytes_to_read + 1);
+
+	*length = fread(buf, 1, bytes_to_read, file);
+
+	if (ferror(file))
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not read file \"%s\": %m", filename)));
+
+	FreeFile(file);
+
+	buf[*length] = '\0';
+	return buf;
+}
 
 
 #define QUOTEMARK '"'
@@ -126,66 +166,158 @@ GetPredictTableFormByName(const char *tablename)
 	return form;
 }
 
+static const char*
+type_to_str(int type )
+{
+	const char* stype;
+	switch(type)
+	{
+	case WJB_DONE:
+		stype = "done";
+		break;
+	case WJB_KEY:
+		stype = "key";
+		break;
+	case WJB_VALUE:
+		stype = "value";
+		break;
+	case WJB_ELEM:
+		stype = "elm";
+		break;
+	case WJB_BEGIN_ARRAY:
+		stype = "array_beg";
+		break;
+	case WJB_END_ARRAY:
+		stype = "array_end";
+		break;
+	case WJB_BEGIN_OBJECT:
+		stype = "obj_beg";
+		break;
+	case WJB_END_OBJECT:
+		stype = "obj_end";
+		break;
+	default:
+		stype = "unknow";
+	}
+
+	return stype;
+}
+
+static char *
+numeric_to_cstring(Numeric n)
+{
+	Datum		d = NumericGetDatum(n);
+
+	return DatumGetCString(DirectFunctionCall1(numeric_out, d));
+}
+
+
 Datum
 ml_test(PG_FUNCTION_ARGS)
 {
-
-	TupleDesc   tupdesc;
-
-	Relation rel, idxrel;;
-	Oid MetadataTableOid;
-	Oid MetadataTableIdxOid;
-	HeapTuple tup;
-	ScanKeyData skey[1];
-	IndexScanDesc scan;
-	int i;
-	// Name name = PG_GETARG_NAME(0);
-	NameData name_data;
-	TupleTableSlot* slot;
-
-	bool found = false;
-	// strcpy(name_data.data, "titanic_1" );
+	int32 len = 0;
+	// const char *model_buffer = read_whole_file("/usr/local/pgsql/model/adult_model.json", &len);
+	const char *model_buffer = read_whole_file("/usr/local/pgsql/model/class.json", &len);
+	Datum dt_buffer  = CStringGetDatum(model_buffer);
 	
-	namestrcpy(&name_data, "titanic1");
-	
-	// elog(WARNING, "Ins %s", name_data.data);
+	Datum res = DirectFunctionCall1(jsonb_in, dt_buffer);
 
+	Jsonb *j = DatumGetJsonbP(res);
 
-	MetadataTableOid = get_relname_relid("ml_model", PG_PUBLIC_NAMESPACE);
-	MetadataTableIdxOid = get_relname_relid("ml_model_pkey", PG_PUBLIC_NAMESPACE);
-
-
-	rel = table_open(MetadataTableOid, RowExclusiveLock);
-	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
-
-	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
-
-	ScanKeyInit(&skey[0],
-				Anum_ml_name ,
-				BTGreaterEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(&name_data));
-
-	index_rescan(scan, skey, 1, NULL /* orderbys */, 0 /* norderbys */);
-
-	slot = table_slot_create(rel, NULL);
-	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	if (JB_ROOT_IS_OBJECT(j))
 	{
-		bool should_free;
-		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
-		
-		// heap_deform_tuple(tup,  tupdesc, values, nulls);
-		if(should_free) heap_freetuple(tup);
-		found = true;
-	}
+		JsonbIterator *it;
+		JsonbIteratorToken type, pred = jbvNull;
+		JsonbValue  jb, ob;
+		int32 nElems, i;
+		char **p, *pp;
+		bool isFinish = false;
+		enum ml_class_state_t classNamesState = ML_STATE_NONE;
 
-	elog(WARNING, "found=%d", found);
 
-	index_endscan(scan);
-	index_close(idxrel, AccessShareLock);
-	table_close(rel, RowExclusiveLock);
+		it = JsonbIteratorInit(&j->root);
+		while ((type = JsonbIteratorNext(&it, &jb, false))
+			   != WJB_DONE)
+		{
+			switch(jb.type)
+			{
+				case jbvObject :
+					elog(WARNING, "tok=%s object pairs=%d", type_to_str(type), jb.val.object.nPairs);
+					break;
+				case jbvString :
+					
+					if (classNamesState == ML_STATE_NONE && strncmp(jb.val.string.val, "class_names", 11) == 0)
+					{
+						classNamesState = ML_STATE_KEY;
+					}
+					else
+						classNamesState = ML_STATE_NONE;
+				
+					elog(WARNING, "string tok=%s %s",
+						type_to_str(type),
+						classNamesState == ML_STATE_KEY ? "STATE_KEY" : "STATE_NONE");
+					break;
+				case jbvArray :
+				{					
+					elog(WARNING, "##### array tok=%s state=%d beg=%d/%d ", type_to_str(type) , classNamesState, type == WJB_BEGIN_ARRAY, type);
+					if (classNamesState == ML_STATE_KEY && type == WJB_BEGIN_ARRAY)
+					{
+						elog(WARNING,"*** ML_STATE_KEY && WJB_BEGIN_ARRAY");
+						classNamesState = ML_STATE_BEG_ARRAY;
+						nElems = jb.val.array.nElems;
+						p = (char**) palloc(sizeof(char*) * nElems);
+						i = 0;
+					}
+					if (classNamesState == ML_STATE_BEG_ARRAY && type == WJB_END_ARRAY)
+					{
+						elog(WARNING,"*** ML_STATE_KEY && WJB_END_ARRAY");
+						classNamesState = ML_STATE_NONE;
+					}
+					elog(WARNING, "tok=%s array %s elms=%d", type_to_str(type),
+					 classNamesState == ML_STATE_BEG_ARRAY ? "STATE_BEG_ARRR" : "STATE_NONE", jb.val.array.nElems);
+					break;
+				}
+				case jbvBinary:
 
-	ExecDropSingleTupleTableSlot(slot);
+					elog(WARNING, "binary len=%d", jb.val.binary.len);
+					break;
+				case jbvNumeric:
+					if (classNamesState == ML_STATE_BEG_ARRAY)
+					{
+						pp = numeric_to_cstring(jb.val.numeric); // allocate ??
+						p[i++] = pp;
+						if (i > nElems)
+							isFinish = true;
+					}
 
+					elog(WARNING, "tok=%s numeric %s", type_to_str(type),numeric_to_cstring(jb.val.numeric));
+					break;
+				case jbvBool:
+
+					elog(WARNING, "bool value=%d", jb.val.boolean);
+					break;
+
+				default:		
+					elog(WARNING, "type=%d", jb.type);
+			}
+
+			pred = type;
+			if (isFinish)
+				break;
+		}
+
+		for (i=0; i < nElems; i++)
+		{
+			elog(WARNING, "Class[%d]=%s",i, p[i]);
+			pfree(p[i]);
+		}
+
+	}	
+
+
+
+	pfree(dt_buffer);
+	pfree(model_buffer);
 
 	PG_RETURN_NULL();
 }
