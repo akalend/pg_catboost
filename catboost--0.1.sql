@@ -83,6 +83,7 @@ $$
     else:
         target_name = next(iter(columns), None)
 
+
     cat_features_idx = []
     i = 0
     bool_types = []
@@ -122,7 +123,7 @@ $$
         split = 0.20
 
     if (split > 0.5 or split == 0):
-        plpy.error("split value must be in 0-0.5 interval")
+        plpy.error("split value must be in 1-50 interval")
 
     is_class_name = False
     if ('classes' in opt_dict):
@@ -191,7 +192,6 @@ $$
     
     ###### options ######
 
-    # plpy.warning("class_names", class_names)
 
     drop_clolumn_num = use_columns.index(target_name)
     use_columns.pop(drop_clolumn_num)
@@ -209,7 +209,9 @@ $$
     pool = Pool(X, label=y, feature_names=use_columns, cat_features=cat_features)
     
 
-    if model_type == 0:             # classification
+    if model_type == 1:             # classification
+        if loss_function is None:
+            loss_function = 'Logloss'
         model = CatBoostClassifier(
             loss_function=loss_function,
             eval_metric=eval_metric,
@@ -220,19 +222,20 @@ $$
             # ignored_features=ignored_names,
             depth=depth,
             l2_leaf_reg=l2_leaf_reg )
-    elif model_type == 1:             # regresssion
+    elif model_type == 2:             # regresssion
+        if loss_function is None:
+            loss_function = 'RMSE'
         model = CatBoostRegressor(
             loss_function=loss_function,
             eval_metric=eval_metric,
             iterations=iterations,
             random_seed=random_seed,
             learning_rate=learning_rate,
-            class_names=class_names,
             # ignored_features=ignored_names,
             depth=depth,
             l2_leaf_reg=l2_leaf_reg )
 
-    elif model_type == 2:             # ranking
+    elif model_type == 3:             # ranking
         model = CatBoostRanker(
             loss_function=loss_function,
             eval_metric=eval_metric,

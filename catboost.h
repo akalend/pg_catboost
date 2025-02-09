@@ -16,6 +16,7 @@ enum ml_class_state_t {
     ML_STATE_KEY,
     ML_STATE_BEG_ARRAY,
     ML_STATE_BND_ARRAY,
+    ML_STATE_BEG_OBJECT,
 };
 
 

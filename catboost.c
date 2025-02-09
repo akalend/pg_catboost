@@ -82,6 +82,10 @@
 
 
 /* Function declarations */
+
+static TupleDesc GetTupleDescTableByName(const char *tablename, Oid *oid);
+
+
 static bool check_model_path(char **newval, void **extra, GucSource source);
 static bool checkInArray(char* name, char **features, int featureCount);
 static const char* getModelParms(ModelCalcerHandle* modelHandle);
@@ -149,22 +153,6 @@ read_whole_file(const char *filename, int *length)
 
 #define QUOTEMARK '"'
 
-static Form_pg_class 
-GetPredictTableFormByName(const char *tablename)
-{
-	HeapTuple tup;
-	Form_pg_class form;
-	Oid PredictTableOid = get_relname_relid((const char*)tablename,(Oid) PG_PUBLIC_NAMESPACE);
-
-	tup = SearchSysCache1(RELOID, ObjectIdGetDatum(PredictTableOid));
-
-	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for relation %d", PredictTableOid);
-	form = (Form_pg_class) GETSTRUCT(tup);
-
-	ReleaseSysCache(tup);
-	return form;
-}
 
 static const char*
 type_to_str(int type )
@@ -211,395 +199,113 @@ numeric_to_cstring(Numeric n)
 	return DatumGetCString(DirectFunctionCall1(numeric_out, d));
 }
 
+static TupleDesc 
+GetTupleDescTableByName(const char *tablename, Oid *oid)
+{
+	HeapTuple tup;
+	Form_pg_class form;
+	Oid PredictTableOid = get_relname_relid((const char*)tablename,(Oid) PG_PUBLIC_NAMESPACE);
+
+	tup = SearchSysCache1(RELOID, ObjectIdGetDatum(PredictTableOid));
+
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for relation %d", PredictTableOid);
+	form = (Form_pg_class) GETSTRUCT(tup);
+	*oid = form->oid;
+	ReleaseSysCache(tup);
+	return 	CreateTemplateTupleDesc(form->relnatts);
+;
+}
+
 
 Datum
 ml_test(PG_FUNCTION_ARGS)
 {
-	int32 len = 0;
-	// const char *model_buffer = read_whole_file("/usr/local/pgsql/model/adult_model.json", &len);
-	const char *model_buffer = read_whole_file("/usr/local/pgsql/model/class.json", &len);
-	Datum dt_buffer  = CStringGetDatum(model_buffer);
-	
-	Datum res = DirectFunctionCall1(jsonb_in, dt_buffer);
-
-	Jsonb *j = DatumGetJsonbP(res);
-
-	if (JB_ROOT_IS_OBJECT(j))
-	{
-		JsonbIterator *it;
-		JsonbIteratorToken type, pred = jbvNull;
-		JsonbValue  jb, ob;
-		int32 nElems, i;
-		char **p, *pp;
-		bool isFinish = false;
-		enum ml_class_state_t classNamesState = ML_STATE_NONE;
-
-
-		it = JsonbIteratorInit(&j->root);
-		while ((type = JsonbIteratorNext(&it, &jb, false))
-			   != WJB_DONE)
-		{
-			switch(jb.type)
-			{
-				case jbvObject :
-					elog(WARNING, "tok=%s object pairs=%d", type_to_str(type), jb.val.object.nPairs);
-					break;
-				case jbvString :
-					
-					if (classNamesState == ML_STATE_NONE && strncmp(jb.val.string.val, "class_names", 11) == 0)
-					{
-						classNamesState = ML_STATE_KEY;
-					}
-					else
-						classNamesState = ML_STATE_NONE;
-				
-					elog(WARNING, "string tok=%s %s",
-						type_to_str(type),
-						classNamesState == ML_STATE_KEY ? "STATE_KEY" : "STATE_NONE");
-					break;
-				case jbvArray :
-				{					
-					elog(WARNING, "##### array tok=%s state=%d beg=%d/%d ", type_to_str(type) , classNamesState, type == WJB_BEGIN_ARRAY, type);
-					if (classNamesState == ML_STATE_KEY && type == WJB_BEGIN_ARRAY)
-					{
-						elog(WARNING,"*** ML_STATE_KEY && WJB_BEGIN_ARRAY");
-						classNamesState = ML_STATE_BEG_ARRAY;
-						nElems = jb.val.array.nElems;
-						p = (char**) palloc(sizeof(char*) * nElems);
-						i = 0;
-					}
-					if (classNamesState == ML_STATE_BEG_ARRAY && type == WJB_END_ARRAY)
-					{
-						elog(WARNING,"*** ML_STATE_KEY && WJB_END_ARRAY");
-						classNamesState = ML_STATE_NONE;
-					}
-					elog(WARNING, "tok=%s array %s elms=%d", type_to_str(type),
-					 classNamesState == ML_STATE_BEG_ARRAY ? "STATE_BEG_ARRR" : "STATE_NONE", jb.val.array.nElems);
-					break;
-				}
-				case jbvBinary:
-
-					elog(WARNING, "binary len=%d", jb.val.binary.len);
-					break;
-				case jbvNumeric:
-					if (classNamesState == ML_STATE_BEG_ARRAY)
-					{
-						pp = numeric_to_cstring(jb.val.numeric); // allocate ??
-						p[i++] = pp;
-						if (i > nElems)
-							isFinish = true;
-					}
-
-					elog(WARNING, "tok=%s numeric %s", type_to_str(type),numeric_to_cstring(jb.val.numeric));
-					break;
-				case jbvBool:
-
-					elog(WARNING, "bool value=%d", jb.val.boolean);
-					break;
-
-				default:		
-					elog(WARNING, "type=%d", jb.type);
-			}
-
-			pred = type;
-			if (isFinish)
-				break;
-		}
-
-		for (i=0; i < nElems; i++)
-		{
-			elog(WARNING, "Class[%d]=%s",i, p[i]);
-			pfree(p[i]);
-		}
-
-	}	
-
-
-
-	pfree(dt_buffer);
-	pfree(model_buffer);
-
-	PG_RETURN_NULL();
-}
-
-Datum
-ml_test_ins(PG_FUNCTION_ARGS)
-{
-
-	TupleDesc   tupdesc;
-
-	Datum  *values;
-	bool   *nulls;
-
-	Relation rel;
-	Oid MetadataTableOid;
-	HeapTuple tup;
-	int i;
-	// Name name = PG_GETARG_NAME(0);
-	NameData name_data;
-	// strcpy(name_data.data, "titanic_1" );
-	
-	namestrcpy(&name_data, "titanic_2");
-	
-	// elog(WARNING, "Ins %s", name_data.data);
-
-
-	MetadataTableOid = get_relname_relid("ml_model", PG_PUBLIC_NAMESPACE);
-	// 32826
-
-	rel = table_open(MetadataTableOid, RowExclusiveLock);
-
-	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
-	nulls = (bool *) palloc(sizeof(bool) * Natts_model);
-
-
-	memset(nulls, true, sizeof(nulls));
-	// values[0] = NameGetDatum(name);
-	values[0] = NameGetDatum(&name_data);
-	nulls[0] = false;
-	
-
-	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
-
-
-	CatalogTupleInsert(rel, tup);
-	heap_freetuple(tup);
-
-	table_close(rel, RowExclusiveLock);
-
-	PG_RETURN_NULL();
-
-}
-
-
-Datum
-ml_test_upd(PG_FUNCTION_ARGS)
-{
-
-	TupOutputState *tstate;
-	TupleDesc   tupdesc;
-	int len;
-	ListCell  *lc;
-	StringInfoData  buf;
-	Datum res;
-	Datum  *values;
-	bool   *nulls, *doReplace;
-	float4 out;
-	char *res_out;
-	Relation rel, idxrel;
-	IndexScanDesc scan;
-	TupleTableSlot* slot;
-	ScanKeyData skey[1];
-	NameData    name_name;
-	bool found = false;
-	Oid MetadataTableOid, MetadataTableIdxOid;
-	HeapTuple tup;
-
-
-	namestrcpy(&name_name, "titanic");
-
-	MetadataTableOid     = get_relname_relid("ml_model", PG_PUBLIC_NAMESPACE);
-	MetadataTableIdxOid = get_relname_relid("ml_model_pkey", PG_PUBLIC_NAMESPACE);
-
-	elog(WARNING, "oid=%d/%d attcoun=%d", MetadataTableOid, MetadataTableIdxOid, Natts_model);
-
-
-	values = (Datum*)palloc0( sizeof(Datum) * Natts_model);
-	nulls = (bool *) palloc0(sizeof(bool) * Natts_model);
-	doReplace = (bool *) palloc0(sizeof(bool) * Natts_model);
-
-	// tupdesc = CreateTemplateTupleDesc(Natts_model);
-
-
-	// TupleDescInitEntry(tupdesc, 1, "name", NAMEOID, -1, 0);
-	// TupleDescInitEntry(tupdesc, 2, "file", TEXTOID, -1, 0);
-	// TupleDescInitEntry(tupdesc, 3, "model_type", BPCHAROID, -1, 0); // 1042
-	// TupleDescInitEntry(tupdesc, 4, "acc", FLOAT4OID, -1, 0);
-	// TupleDescInitEntry(tupdesc, 5, "info", TEXTOID, -1, 0);
-	// TupleDescInitEntry(tupdesc, 6, "args", TEXTOID, -1, 0);
-	// TupleDescInitEntry(tupdesc, 7, "data", BYTEAOID, -1, 0);
-
-
-	// MetadataTableIdxOid =16496;
-	rel = table_open(MetadataTableOid, RowExclusiveLock);
-	idxrel = index_open(MetadataTableIdxOid, AccessShareLock);
-
-	tupdesc = RelationGetDescr(rel);
-
-
-	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1 /* nkeys */, 0 /* norderbys */);
-
-	ScanKeyInit(&skey[0],
-				Anum_ml_name ,
-				BTGreaterEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(&name_name));
-
-	index_rescan(scan, skey, 1, NULL /* orderbys */, 0 /* norderbys */);
-
-	slot = table_slot_create(rel, NULL);
-	while (index_getnext_slot(scan, ForwardScanDirection, slot))
-	{
-		bool should_free;
-		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
-		
-		// newtuple = heap_form_tuple(tupdesc, values, nulls);
-
-		heap_deform_tuple(tup,  tupdesc, values, nulls);
-
-		elog(WARNING, "name:%s type=%s acc=%g", DatumGetCString(values[0]), DatumGetCString(values[2]), DatumGetFloat4(values[3]));
-		// elog(WARNING, "nulls %d %d %d %d %d %d %d", nulls[0], nulls[1], nulls[2], nulls[3], nulls[4], nulls[5], nulls[6]);
-
-
-		if(should_free) heap_freetuple(tup);
-		elog(WARNING,"OK, FOUND should_free=%d", should_free);
-		found = true;
-	}
-	if (!found)
-	{
-		elog(WARNING,"record NOT FOUND");
-	} else
-	{
-		values[3] = Float4GetDatum(0.7777);
-		doReplace[3]  = true;
-
-		Form_pg_attribute atti;
-		atti = TupleDescAttr(tupdesc, 4);
-		elog(WARNING, "	typeoid=%d	attlen[3]=%d", atti->atttypid, atti->attlen);
-
-		tup = heap_modify_tuple(tup, tupdesc,values, nulls, doReplace);
-		if (HeapTupleIsValid(tup))
-		{
-			CatalogTupleUpdate(rel, &tup->t_self, tup);
-		}
-	}
-
-
-	index_close(idxrel, AccessShareLock);
-	table_close(rel, RowExclusiveLock);
-
-	index_endscan(scan);
-	ExecDropSingleTupleTableSlot(slot);
-
-	PG_RETURN_NULL();
-}
-
-Datum
-ml_test_old(PG_FUNCTION_ARGS)
-{
-   
-	Relation rel, idxrel;
+	TupleDesc tupdesc;
 	HeapTuple tup;
 	TableScanDesc scan;
-	TupleDesc tupdesc;
-	TupOutputState *tstate;
-	TupleTableSlot* slot;
-	Datum *values;
-	Oid *typeOids;
+	SysScanDesc sscan, ascan;
 	ScanKeyData skey[1];
-	bool *nulls;
-	char **attName;
-	int32 i = 0;
-	Form_pg_class form;
-	MemoryContext resultcxt, oldcxt;
-	Oid PredictTableOid;
+	Relation rel;
+	Oid oid;
 
-	/* This is the context that we will allocate our output data in */
-	// resultcxt = CurrentMemoryContext;
-	// oldcxt = MemoryContextSwitchTo(resultcxt);
+	const char  *name = text_to_cstring(PG_GETARG_TEXT_PP(0));
 
-	form = GetPredictTableFormByName("test");
-	tupdesc = CreateTemplateTupleDesc(form->relnatts);
+	tupdesc = GetTupleDescTableByName(name, &oid);
+	elog(WARNING, "%s oid=%d",name, oid);
 
-	PredictTableOid = form->oid;
-
-	values = (Datum*)palloc0( sizeof(Datum) * form->relnatts);
-	nulls = (bool *) palloc0(sizeof(bool) * form->relnatts);
-	// typeOids = (Oid*)palloc( sizeof(Oid) * form->relnatts);
 
 	/* attribute table scanning */
-	rel = table_open(AttributeRelationId, RowExclusiveLock);
-	idxrel = index_open(AttributeRelidNumIndexId, AccessShareLock);
-
-	scan = index_beginscan(rel, idxrel, GetTransactionSnapshot(), 1, 0);
-
-	ScanKeyInit(&skey[0],
+	rel = table_open(AttributeRelationId, AccessShareLock);
+	ScanKeyInit(&skey,
 				Anum_pg_attribute_attrelid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(PredictTableOid));
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(oid));
 
-	index_rescan(scan, skey, 1, NULL, 0 );
 
-	slot = table_slot_create(rel, NULL);
+	sscan = systable_beginscan(rel, AttributeRelidNumIndexId, true,
+							   SnapshotSelf, 1, &skey[0]);
 
-	while (index_getnext_slot(scan, ForwardScanDirection, slot))
+	elog(WARNING, "-------");
+	while (HeapTupleIsValid(tup = systable_getnext(sscan)))
+	// while ((tup = systable_getnext(sscan)) != NULL)
 	{
 		Form_pg_attribute record;
-		bool should_free;
-
-		tup = ExecFetchSlotHeapTuple(slot, false, &should_free);
 		record = (Form_pg_attribute) GETSTRUCT(tup);
 		if (record->attnum < 0) continue;
-		// typeOids[i] = record->atttypid;
-
-		TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum,  NameStr(record->attname),
-							record->atttypid, -1, 0);
-		elog(WARNING, "%s:%d", NameStr(record->attname), record->atttypid);
-
-		i++;
+		elog(WARNING, "[%d] %s oid=%d", record->attnum, NameStr(record->attname),
+							record->atttypid);
+		// isFound = true;
+		// TupleDescInitEntry(tupdesc, (AttrNumber) record->attnum, NameStr(record->attname),
+		// 					record->atttypid, -1, 0);
 	}
-	
-	index_endscan(scan);
-	ExecDropSingleTupleTableSlot(slot);
+	elog(WARNING, "-------");
 
-	index_close(idxrel, AccessShareLock);
-	table_close(rel, RowExclusiveLock);
+	systable_endscan(sscan);
+	table_close(rel, AccessShareLock);
+
+
+	rel = table_open(AttributeRelationId, AccessShareLock);
+
+		ScanKeyInit(&skey,
+					Anum_pg_attribute_attrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(oid));
+
+		ascan = systable_beginscan(rel, AttributeRelidNumIndexId, true,
+								   SnapshotSelf, 1, &skey);
+
+		while (HeapTupleIsValid(tup = systable_getnext(ascan)))
+		{
+			Form_pg_attribute attForm = (Form_pg_attribute) GETSTRUCT(tup);
+			if (attForm->attnum < 0) continue;
+			elog(WARNING, "[%d] %s oid=%d", attForm->attnum, NameStr(attForm->attname),
+							attForm->atttypid);
+
+		}
+		systable_endscan(ascan);
+		table_close(rel, AccessShareLock);
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	/* end create tupledesc of out data*/
 
 
-	// /* prepare for projection of tuples */
-	// tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
-
-
-	rel = table_open(PredictTableOid, AccessShareLock);
-	scan = table_beginscan(rel, GetLatestSnapshot(), 0, NULL);  //197
-
-	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-
-		if (!HeapTupleIsValid(tup))
-		{
-			elog(ERROR, " lookup failed for tuple");
-		}
-		/* Data row */
-
-
-		heap_deform_tuple(tup,   tupdesc, values, nulls);
-		
-		// HeapScanDesc sscan = (HeapScanDesc) scan;
-
-		// elog(WARNING, "tuple %p len=%d flag=%d blk=%d", (void*)tup, tup->t_len, sscan->rs_base.rs_flags, sscan->rs_nblocks);
-
-
-		elog(WARNING, "id=%d %s  is null %d",   DatumGetUInt32(values[0]), 
-									TextDatumGetCString(values[1]), DatumGetBool(nulls[2]) );
-
-		// do_tup_output(tstate, values, nulls);
-	}
-	// end_tup_output(tstate);
-
-	table_endscan(scan);
-	table_close(rel, AccessShareLock);
-
-
-
 	PG_RETURN_NULL();
 }
-
-
-
-
-
 
 
 static double
