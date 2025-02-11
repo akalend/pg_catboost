@@ -53,6 +53,19 @@ LANGUAGE SQL VOLATILE STRICT;
 
 
 
+CREATE OR REPLACE FUNCTION ml_meta(
+OUT name text,
+OUT loss_function text,
+OUT model_type char(1),
+OUT acc real,
+OUT args text,
+OUT classes text
+)
+RETURNS setof RECORD
+AS 'SELECT name,loss_function,model_type, acc, args, classes ::jsonb #> ''{class_names}''  classes   from  ml_model;'
+LANGUAGE SQL  VOLATILE STRICT;
+
+
 CREATE OR REPLACE FUNCTION ml_learn(
                                 name text,          -- name of model
                                 model_type int,     -- type of model
@@ -82,7 +95,6 @@ $$
         target_name = opt_dict['target']
     else:
         target_name = next(iter(columns), None)
-
 
     cat_features_idx = []
     i = 0
