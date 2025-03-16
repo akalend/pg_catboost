@@ -51,6 +51,18 @@ CREATE OR REPLACE FUNCTION ml_predict_query(
 AS 'SELECT ml_predict_internal($1,$2,$3, TRUE);'
 LANGUAGE SQL VOLATILE STRICT;
 
+CREATE OR REPLACE FUNCTION ml_meta(
+    OUT name text,
+    OUT loss_function text,
+    OUT model_type char(1),
+    OUT acc real,
+    OUT args text,
+    OUT classes text
+) RETURNS setof RECORD
+AS 'SELECT name,loss_function,model_type, acc, args, classes ::jsonb #> ''{class_names}''  classes   from  ml_model ORDER BY name;'
+LANGUAGE SQL  VOLATILE STRICT;
+
+
 CREATE OR REPLACE FUNCTION ml_learn(
                                 name text,          -- name of model
                                 model_type int,     -- type of model
@@ -139,13 +151,6 @@ $$
         use_columns.append(it)
 
     use_columns.remove(target_name)
-
-    #drop_clolumn_num = columns.index(target_name)
-    #columns.pop(drop_clolumn_num)
-
-    #-- drop_clolumn_num = use_columns.index()
-    #-- use_columns.pop(drop_clolumn_num)
-
 
     depth = opt_dict.get('rept')
     loss_function = opt_dict.get('loss_function')
@@ -293,8 +298,7 @@ $$
     
 
     if model_type == 1:             # classification
-        #-- if loss_function is None:
-        #--     loss_function = 'Logloss'
+
         model = CatBoostClassifier(
             loss_function=loss_function,
             eval_metric=eval_metric,
