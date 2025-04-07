@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS ml_model (
     acc         real,
     info        text,
     args        text,
-    data        bytea
+    data        bytea,
+    classes     text,
+    loss_function text
     );
 
 
