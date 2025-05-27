@@ -1,11 +1,15 @@
 CREATE TABLE IF NOT EXISTS ml_model (
     name        Name PRIMARY KEY,
-    model_file  text,
-    model_type  char(1),
+    fieldlist  text,
+    model_type  char(1) NOT NULL,
     acc         real,
     info        text,
     args        text,
-    data        bytea
+    data        bytea,
+    classes     text,
+    loss_function text,
+    sid         int,
+    query       text
     );
 
 
